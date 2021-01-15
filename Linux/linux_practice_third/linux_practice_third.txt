@@ -1,0 +1,149 @@
+Бакунов О.С. backend
+
+*************
+Файлы скриптов редактировать с помощью vi.
+В данном занятии необходимо создать 5 bash скриптов. Для этого создать в папке linux (где лежат предыдущие два занятия) папку linux_practice_third и создавать в ней скрипты
+*************
+
+cd /home/user/linux_practice_third/
+
+
+***********
+Task1
+Сгенерировать набор файлов вида
+YYYY-mm-dd.csv
+по каждому дню за год с содержимым такого вида (числовые поля заполнить случайными  значениями):
+cite        ; country ; date       ; views ; clicks
+www.abc.com ; USA     ; 2017-01-01 ; 1000  ; 3
+www.cba.com ; France  ; 2017-01-01 ; 750   ; 0
+
+Один из способов реализации: командой mkdir создать директорию, куда будете складывать файлы. В скрипте циклом for ((a=0; a<365; a++)) записывать в файл данные. Файлы можно создавать в формате "2019-01-01 + ${a}day"
+
+
+    1)  touch task1.sh
+    2)  vi task1.sh
+    3) //Переход в режим ввода из командного режима осуществляется командой i, ыход из режима ввода в командный режим осуществляется клавишей Esc.
+    @@@@
+       #!/bin/bash
+       echo "Task1 start"; 
+       mkdir "/home/user/linux_practice_third/files_task1" -p
+       for i in {0..364};
+       do
+            date=$(date -d "2019-01-01 +$i days" +'%Y.%m.%d');
+            echo "cite;country;date;views;clicks
+       www.abc.com;USA;$date;$RANDOM;$RANDOM
+       www.cba.com;France;$date;$RANDOM;$RANDOM" > "/home/user/linux_practice_third/files_task1/${date}.csv";
+       done
+
+       echo "Task1 complete"; 
+   @@@@ 
+   //При наборе скритпа использовал: х - удалить символ, dd - удалить строку, навигация стрелками
+   
+   
+  
+Task2
+В условиях предыдущей задачи 
+Проверить, что все файлы за год присутствуют и нет лишних.
+Во всех исходных файлах переставить дату на первое место и привести к виду dd/mm/YYYY:
+date       ; cite        ; country ; views ; clicks
+01/01/2017 ; www.abc.com ; usa     ; 1000  ; 3
+01/01/2017 ; www.cba.com ; France  ; 750   ; 0
+
+Один из способов реализации: Что бы проверить, что все файлы присутствуют можно подсчитать количество файлов в директории (например используя ls). И в условии проверить if ((numberOfFiles == 366)), если и вывести сообщение, если условие верно или не верно. Поиск и замену можно реализовать через регулярные выражения и третью переменную.
+
+    1)  touch task2.sh
+    2)  vi task2.sh
+    3)  
+         @@@@
+              #!/bin/bash
+              echo "Task2 start"; 
+
+              filesCount=365;
+              avaibleFilesCount=$(($(ls -f files_task1/ | wc -l)-2));
+
+              if [[ $filesCount != $avaibleFilesCount ]] 
+              then
+                  echo "The count of files is not correct";
+              else
+                  echo "The count of files is OK";    
+              fi
+
+              for file in files_task1/*
+              do 
+               echo "date;cite;country;views;clicks" > temp
+               sed '1d' $file | sed 's/\([^;]*\);\([^;]*\);\([^.]*\).\([^.]*\).\([^;]*\);\([^;]*\)/\5\/\4\/\3;\1;\2;\6/' >> temp
+               mv temp $file
+              done
+
+              echo "Task2 complete";  
+        @@@@    
+        
+        
+Task3
+Сформировать набор файлов monday.csv, tuesday.csv и т.д. куда вывести содержимое всех исходных файлов отдельно по каждому дню недели. Строку заголовка вывести один раз. Исходные файлы удалить.
+     
+     1) touch task3.sh
+     2) vi task3.sh
+     3) 
+     @@@@@
+           #!/bin/bash
+           echo "Task3 start";
+
+           mkdir "files_task3" -p
+
+           for dDay in {0..6};
+           do
+             week=$(LANG=en_US date -d "2020-01-01 + $dDay days" +%A);
+             echo "date;cite;country;views;clicks" > "files_task3/${week}.csv";
+           done
+
+           for file in files_task1/*
+           do
+             currentDate=$(basename $file .csv)
+             week=$(LANG=en_US date -d $(date -d $(sed "s/\./\//g" <<< $currentDate) +%Y-%m-%d) +%A);
+             sed -e '1d' $file >> "files_task3/$week.csv" && rm $file
+           done
+
+           echo "Task3 comlete"; 
+     @@@@@      
+
+
+Task4
+Вывести в отдельный файл содержимое всех файлов *.java из своего репозитория (локальный проект заочной школы или любой другой, где есть java классы), в которых встречается ArrayList. 
+Один из способов реализации: цикл с grep в условии.
+
+
+     1) touch task4.sh
+     2) vi task4.sh
+     3) 
+     @@@@@
+           #!/bin/bash
+           echo "Task4 start"
+
+           grep --include=\*.java -rnwlI 'thumbtack_online_school_2019_2_oleg_bakunov-master/' -e "ArrayList"  | xargs cat  > ArrayList.txt
+
+           echo "Task4 complete";  
+     @@@@@
+     
+     
+     
+Task5
+Вывести содержимое каталога /etc (каждая строка с полным путем) затем заменить первые вхождения ‘/’ на “C:\”, остальные на ‘\’
+
+
+     1) touch task5.sh
+     2) vi task5.sh
+     3) 
+     @@@@@     
+           #!/bin/bash
+           echo "Task5 start";
+
+           ls -d /etc/*
+           ls -d /etc/* | sed 's#/etc#C:/etc#g'|sed 's#/#\\#g'
+
+           echo "Task5 complete";
+     @@@@@
+            
+        
+           
+         

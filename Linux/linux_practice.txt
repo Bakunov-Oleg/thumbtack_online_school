@@ -1,0 +1,170 @@
+ *************Бакунов Олег backend
+ *****Командная строка
+    
+	1) В своём домашнем каталоге создать подкаталог linux_ex и зайти в него. 
+        cd /home/user/; mkdir linux_ex; cd /home/user/linux_ex;
+    2) Создать файл hello.txt  с текстом “Hello world”.
+        sudo touch hello.txt; ls -l //создал файл, проверил  права
+        sudo chown user:user hello.txt; ls -l //сменил пользователя и группу, проверил
+        echo "Hello world" > hello.txt; cat hello.txt //записал в фаил, вывел
+    3) Добавить в этот файл (разделяя пустыми строками):
+       свои имя и фамилию,
+       текущую дату,
+       имя пользователя       
+		echo "Олег Бакунов" » hello.txt; date » hello.txt; whoami » hello.txt; cat hello.txt // записал, проверил
+
+    4)содержимое домашнего каталога (нерекурсивно, список имен файлов, включая скрытые)
+         ls -a /home » hello.txt; cat hello.txt //записал, проверил
+
+    5)содержимое корневого каталога (нерекурсивно)
+          ls / » hello.txt; cat hello.txt //записал, проверил
+
+    6)содержимое каталога /etc
+          ls -r /etc » hello.txt; cat hello.txt // записал, проверил
+
+    7)только файлы в каталоге /etc  
+          ls -l /etc| grep ^- » hello.txt; cat hello.txt //вывел файлы с помощью фильтра, проверил
+
+    8)только подкаталоги в каталоге /etc (нерекурсивно)
+          ls -l /etc | grep ^d » hello.txt; cat hello.txt //вывел директории с помощью фильтра, проверил
+
+    9)содержимое файла /etc/passwd
+           cat /etc/passwd » hello.txt; cat hello.txt
+
+    10)первый столбец файла /etc/passwd (список юзеров)
+           cut -d':' -f1 /etc/passwd >> /home/user/linux_ex/hello.txt; cat /home/user/linux_ex/hello.txt //Вывел столбец по разделителю ":", проверил
+
+    11)содержимое файла /etc/group
+           cut -d':' -f1 /etc/group >> hello.txt; cat hello.txt //аналогично предыдущему
+
+    12)первую и последнюю строки файла /etc/group
+            tail -n1 hello.txt >> last.txt; head -n1 hello.txt >> hello.txt; head -n1 last.txt >> hello.txt; rm last.txt //записал последнюю строку во временный фаил, записал первую строку в фаил, записал последнюю строку из временного файла, удалил временный фаил. P.s. не нашел способ как записать строку из файла в переменную
+
+    13)Вывести hello.txt с прокруткой
+             less hello.txt
+
+    14)Разбить hello.txt на файлы размером 1к, затем собрать обратно.
+             split -b 1 hello.txt; cat x* hello1.txt // разбил hello.txt, собрал в hello1.txt
+
+    15)Заменить в hello.txt ‘/’ на ‘\’     
+              sed -i 's/\//\\/g' hello.txt // заменил символы, экранировав символы / и \ символом \
+              
+    16)Скопировать /var/log в текущий каталог (кроме файлов без доступа) с сохранением времени модификации. В текущем каталоге должен появиться ./var/log
+            shopt -s dotglob
+            cp -r -p /var/log /home/user/linux_ex/ //рекурсивно скопировал с сохранением стандартных атрибутов атрибутов mode,ownership,timestamps
+    
+	17)вывести объем занимаемого места
+              du /home/user/linux_ex/  //Вывел размеры папок, находящихся в папке linux_ex, в которую копировал /log
+     
+	18)Вывести все файлы, начинающиеся на ‘a’ (не каталоги)
+              find . -name "a*.*"
+    
+	19)удалить все файлы, начинающиеся на ‘a’ (не каталоги). 
+              find /home/user/linux_ex/log/  -name "a*.*" \-exec rm -f {}   
+          Как убедиться, что выполнено правильно?
+              find . -name "a*.*" //Повторить поиск и убедиться в пустом результате
+    
+	20)вывести все файлы со временем последней модификации больше 5 дней;
+              find /home/user/linux_ex/log/ -mtime +5
+     
+	21)вывести все файлы со временем последней модификации меньше 5 дней;
+              find /home/user/linux_ex/log/ -mtime -5         
+    
+	22) создать каталог archive и переместить туда файлы (не каталоги) со временем     модификации больше 5 дней. 
+               find /home/user/linux_ex/log/ -type f  -mtime +5 -exec mv -f {} /home/user/linux_ex/archive/ \;
+     
+	23) Найти все файлы (рекурсивно) с расширением jar в каталогах /opt и /usr.
+                find /opt/ /usr/ -type f -name "*.jar" //поиск рекурсивный, доп. опции не нужны
+     
+	24)Найти все файлы с расширением java, созданные месяц назад плюс-минус одна неделя.
+         find ./ -name "*.java" -mtime -38  -mtime +24   
+         
+    25)В двух заданных каталогах должен быть одинаковый набор файлов. Нужно в этом убедиться, т.е. проверить, что совпадают множества файлов, имена и содержимое.
+          diff -q -r ./archive/ ./archive2/   //Ключ q выводит только различия, если их нет, то вывод остается пустым
+     
+    26)Создать с помощью touch несколько файлов 1.MP3, 2.MP3… Написать команду для группового переименования расширений в нижний регистр, т.е. должно получиться 1.mp3, 2.mp3...
+          rename -f 's/\.MP3/$\.mp3/' *.MP3 // Понадобилось установить rename, использовав sudo apt install rename
+      
+	  
+    27)Установить вручную (без apt-get) java и maven последней версии (можно взять OpenJDK https://jdk.java.net/14/ скачать с помощью wget.  Если не работает буфер обмена, можно создать короткую ссылку, например, https://clck.ru/Qg6LM ).
+Добавить путь запуска в переменную PATH, создать переменные JAVA_HOME и M2_HOME. Выполнить сборку java проекта (создать простой проект типа HelloWorld или загрузить из заочной школы).
+
+       1) wget -P /home/user/linux_ex/distr/ https://download.java.net/java/GA/jdk14.0.2/205943a0976c4ed48cb16f1043c5c647/12/GPL/openjdk-14.0.2_linux-x64_bin.tar.gz
+           загружаем OpenJDK 
+       2) tar -xzf openjdk-14.0.2_linux-x64_bin.tar.gz  -C /opt/ //Распаковываем архив в директорию
+       3)  update-alternatives --install /usr/bin/java java /usr/lib/jvm/jdk1.8.0_221/bin/java 100 //Добавляем фаил к списку утилиты управления версиями
+       4)  update-alternatives --config java //Активируем данную версию
+       5) nano /etc/bash.bashrc //Открываем и редактируем фаил
+       6)   java --version //Проверяем версию java
+       
+       7) wget  http://mirror.linux-ia64.org/apache/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz
+       8)   tar -xzf apache-maven-3.6.3-bin.tar.gz -C /opt/
+       9)  ls -s /opt/
+       10) nano /etc/profile.d/maven.sh 
+       11) source /etc/profile.d/maven.sh // Добавляем source
+       12) mvn -version 
+       
+       
+    28) Выполнить сборку java проекта (создать простой проект типа HelloWorld или загрузить из заочной школы).
+        1) cd /home/user/linux_ex/thumbtack_online_school_2019_2_oleg_bakunov-master/     
+        2) mvn clean package
+      
+    29) Проанализировать загрузку процессора, объем памяти. 
+        1) ps // Просмотр процессов
+        2) top // запущенные в Linux процессы программы и службы
+        3) free // информация об использовании памяти в системе
+   
+    30)  Вывести информацию по использованию места в файловой системе. 
+         df
+  
+    31) Найти самые большие каталоги (рекурсивно до уровня 2).     
+        sudo du -a / --max-depth=2 
+  
+  
+****************Users, groups, access rights
+
+
+
+    1) Создать двух юзеров (напр., ivanov, petrov), создать каталог /shared и дать полный доступ этим двум юзерам. У остальных не должно быть доступа даже на чтение.
+    
+        1)adduser --no-create-home user1 //заполняем информацию о пользователе
+        2)adduser --no-create-home user2 //заполняем информацию о пользователе
+        3)addgroup thr
+        4)gpasswd -a user1 thr; gpasswd -a user2 thr //помещаем пользователей в группу
+        5)mkdir /shared
+        6)chown user1 : thr /shared/
+        7) chmod 770 /shared/
+        
+
+
+
+****************Named pipe (именованный канал)
+
+
+    1) Установить MySQL и создать базу ttschool, заполнить данными. Выполнить дамп базы с архивированием в файл посредством named pipe, затем восстановить из файла также посредством named pipe.
+        
+         1) apt-get update //Обновил репозитории
+         2) apt-get install mysql-server //установил mysql
+         3) systemctl status mysql  //проверка статуса mysql
+         4) mysql_secure_installation //настройка сервера
+         5) mysql // запуск клиена БД
+         CREATE USER 'user'@'localhost' IDENTIFIED BY 'pass" //Создать пользователя имя, хос, пароль
+         '> GRANT ALL PRIVILEGES ON *.* TO 'user'@"localhost' WITH GRANT OPTION //привилегии для пользователя над всеми базами данными и всеми таблицами
+         -> mkinfo mysql_pipe //создал pipe
+         -> gzip -9 -c < mysql_pipe > dump.qz & mysqldump -u user -p ttscool group school > mysql_pipe // gzip [параметры] <имена файлов>, бекап mysqldump в mysql_pipe
+         -> rm mysql_pipe 
+         -> 
+         -> mkfifo mysql_pipe //создал pipe
+         -> qunzip -c dump.qz > mysql_pipe & mysql -p -u user ttscool < mysql_pipe //разархивировал
+         -> rm mysql_pipe
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 

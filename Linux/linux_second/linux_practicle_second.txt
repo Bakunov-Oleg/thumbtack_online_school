@@ -1,0 +1,405 @@
+************Занятие 2
+   1) Cкачать, распаковать WebHelloWorld.tar.gz и выполнить сборку командой mvn clean package
+        tar -xzf WebHelloWorld.tar.gz -C /home/user/linux_second/ //Распаковал архив
+        cd /home/user/linux_second/WebHelloWorld/; mvn clean package //Собрал
+        //В результате успешной сборки в каталоге /home/user/linux_second/WebHelloWorld/target получен фаил WebHelloWorld.jar
+        
+   *******SSH
+   2)  Запустить две виртуальные машины, созданные ранее (будем называть их WORKSTATION и SERVER) 
+          Запустил в Vbox две машины.
+          ip addr //Проверил на каждой машине ip. ip WORKSTATION 192.168.56.101 ip Server 192.168.56.108
+          ping 192.168.56.108 //Проверил доступность сервера
+          ssh-keygen //Выполнил создание ключа на машине 
+          ssh-copy-id user@192.168.56.108 //Залил ключ на сервер
+          ssh user@192.168.56.108 //Проверил авторизацию на сервере с помощью ключа
+          sudo nano /etc/ssh/sshd_config //  Отредактировал конфиг, установив "PasswordAuthentication no"
+          
+    ***********Установка сервиса на удаленной машине       
+    3)Установить на сервере java. 
+    sudo apt install openjdk-14-jre-headless
+    sudo apt install maven //Установил java & maven
+    
+    4)Скопировать на SERVER приложение webHelloWorld (jar файл) и запустить. 
+    scp WebHelloWorld.jar user@192.168.56.108:/home/user/
+    
+    5)Выполнить в двух вариантах, с помощью команды screen и в виде службы systemd. 
+    
+          ******screen:
+       
+             screen -S "hello" java -jar WebHelloWorld.jar      //Запуск в screen
+       
+              @@@@@@@@
+       
+                        [Thread-0] INFO org.eclipse.jetty.util.log - Logging initialized @218ms to org.eclipse.jetty.util.log.Slf4jLog
+                        [Thread-0] INFO spark.embeddedserver.jetty.EmbeddedJettyServer - == Spark has ignited ...
+                        [Thread-0] INFO spark.embeddedserver.jetty.EmbeddedJettyServer - >> Listening on 0.0.0.0:4567
+                        [Thread-0] INFO org.eclipse.jetty.server.Server - jetty-9.4.z-SNAPSHOT
+                        [Thread-0] INFO org.eclipse.jetty.server.session - DefaultSessionIdManager workerName=node0
+                        [Thread-0] INFO org.eclipse.jetty.server.session - No SessionScavenger set, using defaults
+                        [Thread-0] INFO org.eclipse.jetty.server.session - Scavenging every 660000ms
+                        [Thread-0] INFO org.eclipse.jetty.server.AbstractConnector - Started ServerConnector@74350bc3{HTTP/1.1,[http/1.1]}{0.0.0.0:4567}
+                        [Thread-0] INFO org.eclipse.jetty.server.Server - Started @408ms
+                        [qtp1550407148-13] INFO net.thumbtack.web.helloworld.HelloWorld - Request received from 192.168.56.101
+ 
+              @@@@@@@@@
+
+             curl http://192.168.56.108:4567/hello //запрос с терминала клиента на сервер. Получен ответ: Hello World
+           
+        ********systemd:
+           sudo touch /etc/systemd/system/hello.service //create service file
+           sudo chmod 664 /etc/systemd/system/hello.service //права доступа
+           sudo nano /etc/systemd/system/hello.service  //редактируем фаил сервиса
+           
+             [Unit]
+                Description=hello
+
+             [Service]
+                ExecStart=/usr/lib/jvm/java-1.14.0-openjdk-amd64/bin/java -jar /home/user/WebHelloWorld.jar
+                ExecStop=/bin/kill -15 $MAINPID
+ 
+             [Install]
+                WantedBy=multi-user.target
+
+  
+           sudo systemctl daemon-reload //перезапуск systemd
+           sudo systemctl start hello.service //star service
+           systemctl status hello.service  //status service
+           
+               @@@@ Вывод команды systemctl status hello.service
+                        ● hello.service - hello
+                        Loaded: loaded (/etc/systemd/system/hello.service; disabled; vendor preset: enabled)
+                        Active: active (running) since Tue 2020-09-15 05:17:48 UTC; 7s ago
+                        Main PID: 3764 (java)
+                        Tasks: 23 (limit: 1075)
+                        Memory: 22.2M
+                        CGroup: /system.slice/hello.service
+                              └─3764 /usr/lib/jvm/java-1.14.0-openjdk-amd64/bin/java -jar /home/user/WebHelloWorld.jar
+
+                        Sep 15 05:17:48 server1 systemd[1]: Started hello.
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.util.log - Logging initialized @190ms to org.eclipse.jetty.util.log.Slf4jLog
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO spark.embeddedserver.jetty.EmbeddedJettyServer - == Spark has ignited ...
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO spark.embeddedserver.jetty.EmbeddedJettyServer - >> Listening on 0.0.0.0:4567
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.Server - jetty-9.4.z-SNAPSHOT
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.session - DefaultSessionIdManager workerName=node0
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.session - No SessionScavenger set, using defaults
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.session - Scavenging every 600000ms
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.AbstractConnector - Started ServerConnector@74350bc3{HTTP/1.1,[http/1.1]}{0.0.0.0:4567}
+                        Sep 15 05:17:48 server1 java[3764]: [Thread-0] INFO org.eclipse.jetty.server.Server - Started @337ms
+              @@@@@
+    
+    6)Запустить journalctl для просмотра логов. 
+       sudo journalctl -u hello.service
+
+*************************Сетевые утилиты
+
+     7)апустить WebHelloWorld и проанализировать запросы и ответы с помощью ngrep.
+          screen -S "hello" java -jar WebHelloWorld.jar
+          sudo ngrep -d any -W byline port 4567
+
+          @@@@@
+               interface: any
+               filter: ( port 4567 ) and (ip || ip6)
+          @@@@@
+          //обратимся к  http://192.168.56.108:4567/hello, например через браузер
+            @@@@@
+                     ####
+                     T 192.168.56.101:38822 -> 192.168.56.108:4567 [AP] #4
+                     GET /hello HTTP/1.1.
+                     Host: 192.168.56.108:4567.
+                     User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:80.0) Gecko/20100101 Firefox/80.0.
+                     Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8.
+                     Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3.
+                     Accept-Encoding: gzip, deflate.
+                     Connection: keep-alive.
+                     Upgrade-Insecure-Requests: 1.
+                     Cache-Control: max-age=0.
+                     .
+		             
+                     ## 
+                     T 192.168.56.108:4567 -> 192.168.56.101:38822 [AP] #6
+                     HTTP/1.1 200 OK.
+                     Date: Tue, 15 Sep 2020 07:19:35 GMT.
+                     Content-Type: text/html;charset=utf-8.
+                     Transfer-Encoding: chunked.
+                     Server: Jetty(9.4.z-SNAPSHOT).
+                     .
+                     B.
+                     Hello World
+                     #
+                     T 192.168.56.108:4567 -> 192.168.56.101:38822 [AP] #7
+                     .
+                     0.
+                     .
+		             
+                     ####
+			@@@@		 
+          //Видим, что произошел запрос с ip клиента на ip сервера, с какого браузера, язык системы пользователя, дату время и тд.
+          //При обращении через curl http://192.168.56.108:4567/hello видим, что информации меньше, но так же указан клиент curl, дата, адреса.
+          
+     8)Установить web сервер nginx
+         sudo apt install nginx   
+         sudo systemctl enable nginx
+         curl localhost/index
+         
+         @@@@@
+             <html>
+             <head><title>404 Not Found</title></head>
+             <body>
+             <center><h1>404 Not Found</h1></center>
+             <hr><center>nginx/1.18.0 (Ubuntu)</center>
+             </body>
+             </html>  
+         @@@@@@
+         
+             
+     9)Cоздать простую страницу, содержащую изображение, get и post формы,  файл для скачивания, форму file upload, установку cookie (например, средствами JS). Делать обработку этих действий не нужно. Цель задания - проанализировать как  выглядят запросы и ответы в протоколе HTTP.
+            1) /linux_second/page/index.html //созданная страница
+            2) scp -r /home/user/linux_second/page user@192.168.56.108:/home/user/
+            3) sudo nginx -t //проверка файла конфигураии
+            4) sudo nginx -s reload //загрузка файла конфигурации
+            5) проверил доступность страницы из браузера 192.168.56.108:80
+            6) sudo ngrep -d any -W byline port 80
+     
+     @@@@@@@ //подключение
+             T 192.168.56.101:40412 -> 192.168.56.108:80 [AP] #1
+             GET / HTTP/1.1.
+             Host: 192.168.56.108.
+             User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:80.0) Gecko/20100101 Firefox/80.0.
+             Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8.
+             Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3.
+             Accept-Encoding: gzip, deflate.
+             Connection: keep-alive.
+             Cookie: cookie.
+             Upgrade-Insecure-Requests: 1.
+    @@@@@@ 
+    
+    
+    @@@@@@@ //Переход на страницу 2
+            T 192.168.56.101:40424 -> 192.168.56.108:80 [AP] #8
+            GET /Bho9CWn6KFs.jpg HTTP/1.1.
+            Host: 192.168.56.108.
+            User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:80.0) Gecko/20100101 Firefox/80.0.
+            Accept: image/webp,*/*.
+            Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3.
+            Accept-Encoding: gzip, deflate.
+            Connection: keep-alive.
+            Referer: http://192.168.56.108/page2.html.
+            Cookie: cookie.
+            If-Modified-Since: Tue, 15 Sep 2020 08:57:44 GMT.
+            If-None-Match: "5f608208-2f03b".
+    @@@@@@
+    
+    
+    @@@@@@ //Отправка текста из формы
+               #############
+               T 192.168.56.101:40432 -> 192.168.56.108:80 [AP] #13
+               POST / HTTP/1.1.
+               Host: 192.168.56.108.
+               User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:80.0) Gecko/20100101 Firefox/80.0.
+               Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8.
+               Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3.
+               Accept-Encoding: gzip, deflate.
+               Content-Type: multipart/form-data; boundary=---------------------------135731817119764157581724357008.
+               Content-Length: 324.
+               Origin: http://192.168.56.108.
+               Connection: keep-alive.
+               Referer: http://192.168.56.108/.
+               Cookie: cookie.
+               Upgrade-Insecure-Requests: 1.
+               .
+               -----------------------------135731817119764157581724357008.
+               Content-Disposition: form-data; name="text".
+               .
+               .............. .......
+               -----------------------------135731817119764157581724357008.
+               Content-Disposition: form-data; name="submit".
+               .
+               ...................
+               -----------------------------135731817119764157581724357008--.
+               
+               ##
+               T 192.168.56.108:80 -> 192.168.56.101:40432 [AP] #15
+               HTTP/1.1 405 Not Allowed.
+               Server: nginx/1.18.0 (Ubuntu).
+               Date: Tue, 15 Sep 2020 09:25:47 GMT.
+               Content-Type: text/html.
+               Content-Length: 166.
+               Connection: keep-alive.
+               .
+               <html>.
+               <head><title>405 Not Allowed</title></head>.
+               <body>.
+               <center><h1>405 Not Allowed</h1></center>.
+               <hr><center>nginx/1.18.0 (Ubuntu)</center>.
+               </body>.
+               </html>.
+               
+               ################
+ 
+
+    @@@@@@ //Получил адрес, тип клиента, дату и тд., описание содержимого, страницу, которую вернул сервер клиенту.
+    
+    @@@@@@ //Загрузка файла на сервер
+    
+             T 192.168.56.101:40448 -> 192.168.56.108:80 [AP] #1
+             POST / HTTP/1.1.
+             Host: 192.168.56.108.
+             User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:80.0) Gecko/20100101 Firefox/80.0.
+             Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8.
+             Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3.
+             Accept-Encoding: gzip, deflate.
+             Content-Type: multipart/form-data; boundary=---------------------------39838428563483431459452242025.
+             Content-Length: 192933.
+             Origin: http://192.168.56.108.
+             Connection: keep-alive.
+             Referer: http://192.168.56.108/.
+             Cookie: cookie.
+             Upgrade-Insecure-Requests: 1.
+             .
+             -----------------------------39838428563483431459452242025.
+             Content-Disposition: form-data; name="fileToUpload"; filename="Bho9CWn6KFs.jpg".
+             Content-Type: image/jpeg.
+             .
+             ......JFIF.....H.H.....C.......................
+             
+                 ***********/Тут содержимое запроса/***********
+                 
+                 ### //Ответ сервера клиенту.
+             T 192.168.56.108:80 -> 192.168.56.101:40448 [AP] #33
+             HTTP/1.1 405 Not Allowed.
+             Server: nginx/1.18.0 (Ubuntu).
+             Date: Tue, 15 Sep 2020 09:31:39 GMT.
+             Content-Type: text/html.
+             Content-Length: 166.
+             Connection: keep-alive.
+             .
+             <html>.
+             <head><title>405 Not Allowed</title></head>.
+             <body>.
+             <center><h1>405 Not Allowed</h1></center>.
+             <hr><center>nginx/1.18.0 (Ubuntu)</center>.
+             </body>.
+             </html>.
+             
+    @@@@@@
+    
+     
+    Эту часть задания можно считать выполненной, если вы проанализируете запросы и ответы с помощью ngrep, и выложите ответ в документе репозитория. Отчет в формате: настроил приложение, запустил команду, в консоли вижу следующее (скопировать самую информативную часть вывода из консоли) из этого можно сделать такой-то вывод...
+Дополнительно по желанию можно выполнить это задание с помощью tshark.
+
+
+
+
+**********************Графические клиенты, Iptables, ssh туннель
+
+Установить на сервере MySql или PostgreSQL. 
+Из Windows можно воспользоваться xming http://tolik-punkoff.com/2016/11/21/nastrojka-x11-forwarding-cherez-ssh-s-pomoshhyu-putty-i-xming/
+
+
+
+
+
+    sudo apt install mysql-server mysql-client //Ставим на сервер
+    sudo systemctl status mysql //проверяем состояние службы
+     **//Ставим mysql-workbench-community для клиента
+          cd /tmp
+          wget https://dev.mysql.com/get/mysql-apt-config_0.8.15-1_all.deb
+          sudo dpkg -i mysql-apt-config_0.8.15-1_all.deb
+          sudo apt update
+          sudo apt install mysql-workbench-community
+     
+     На машине WORKSTATION запустить графический клиент (MySql Workbench или DBeaver) и проверить доступ. При работе с виртуальной машиной клиент запускается через ssh -X
+     *//Запуск MySql Workbench
+	 
+            ssh -X 192.168.56.101 mysql-workbench
+			
+              @@@@(mysql-workbench-bin:15457): Gtk-WARNING **: 06:36:56.933: cannot open display: //приложение запущено, но графическое окно не запущенно (разграничение прав доступа)
+     
+	 *//Средствами iptables закрыть доступ (закрыть на сервере порт 3306 для MySql или 5432 для Postgres), проверить, что доступа нет.
+          
+          sudo iptables -A INPUT -p tcp --dport 3306 -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT
+          sudo iptables -A INPUT -p tcp --dport 3306 -j DROP
+          
+          sudo apt  install nmap
+          nmap -p 3306 192.168.56.108
+             @@@@
+                Starting Nmap 7.80 ( https://nmap.org ) at 2020-09-16 06:07 EET
+                Nmap scan report for 192.168.56.108
+                Host is up (0.00038s latency).
+		     
+                PORT     STATE    SERVICE
+                3306/tcp filtered mysql
+             @@@@@
+                 
+    
+     **//Настроить ssh туннель для проброса порта  БД с сервера на WORKSTATION.
+               ssh -L 3306:127.0.0.1:3306 user@192.168.56.108
+			   
+     Эту часть задания можно считать выполненной, если удалось подключиться клиентом к БД, затем закрыть порт и при следующей попытки подключиться получить ошибку подключения. После настройки ssh-туннеля доступ должен появиться, при выключении туннеля - пропадать.
+     
+******************************
+Проброс авторизации и создание туннеля через промежуточный узел
+
+
+В этом задании нужно смоделировать работу с production сервером, находящимся в защищенной сети. Для выполнения нужно создать и запустить три виртуальные машины, связанные сетью между собой (если базовая система - Linux, то достаточно две дополнительные виртуалки). Будем условно называть их
+WORKSTATION - соответствует рабочей машине разработчика //192.168.56.101
+GATEWAY - сервер для входа в защищенную сеть //192.168.56.107
+SERVER  - production сервер, находящийся в защищенной сети //192.168.56.108
+
+Таким образом, доступ с WORKSTATION на SERVER возможен только через промежуточный узел GATEWAY
+
+Для удобства можно написать эти имена в файлах /etc/hostname на каждой машине соответственно и перезагрузить.
+     sudo nano /etc/hostname
+
+Сгенерировать пару ключей. Приватный ключ выложить на WORKSTATION, публичный - на GATEWAY и SERVER.
+      ssh-copy-id user@192.168.56.107 // Залил на gateway. На сервере уже есть.
+
+Средствами iptables на машине SERVER закрыть SSH (порт 22) для всех входящих запросов кроме тех, которые пришли с GATEWAY.
+        
+    sudo iptables -L -n -v //проверка iptables
+                 
+    //Добавить исключения и закрыть порт
+        sudo iptables -A INPUT -p tcp --dport 22 -s 192.168.0.0/16 -j ACCEPT
+        sudo iptables -A INPUT -p tcp --dport 22 -s 127.0.0.0/8 -j ACCEPT
+        sudo iptables -A INPUT -p tcp --dport 22 -j DROP
+        
+        sudo iptables -L -n -v //проверка iptables
+        
+        @@@@@
+              Chain INPUT (policy ACCEPT 4 packets, 340 bytes)
+               pkts bytes target     prot opt in     out     source               destination         
+                 15  1132 ACCEPT     tcp  --  *      *       192.168.0.0/16       0.0.0.0/0            tcp dpt:22
+                  0     0 ACCEPT     tcp  --  *      *       127.0.0.0/8          0.0.0.0/0            tcp dpt:22
+                  0     0 DROP       tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+              
+              Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+               pkts bytes target     prot opt in     out     source               destination         
+              
+              Chain OUTPUT (policy ACCEPT 7 packets, 692 bytes)
+               pkts bytes target     prot opt in     out     source               destination    
+      @@@@@
+                
+        sudo iptables-save
+        
+           
+
+     С помощью ssh-agent настроить доступ с WORKSTATION на SERVER через промежуточный сервер GATEWAY (проброс авторизации). Далее вся работа с сервером происходит только через это соединение.
+          eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa //добавить ключ в ssh agent:
+          ssh -A -tt user@192.168.56.107  ssh user@192.168.56.108 //проброс авторизации
+    
+    Установить на сервере MySql, средствами iptables закрыть к нему доступ (закрыть порт 3306), проверить, что доступа нет. 
+    //закрыть доступ на сервере к mysql кроме ocalhost
+         sudo iptables -A INPUT -p tcp --dport 3306 -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT
+         sudo iptables -A INPUT -p tcp --dport 3306 -j DROP
+         
+         sudo iptables -L -n -v //проверка iptables
+         sudo iptables-save
+
+   Настроить ssh туннель для доступа с WORKSTATION через GATEWAY. 
+         ssh -L 3306:127.0.0.1:3306 -tt user@192.168.56.101 -p 22 ssh -L 3306:127.0.0.1:3306 user@192.168.56.108
+
+
+Запустить на WORKSTATION графический клиент (MySql Workbench или DBeaver) и проверить доступ. 
+
+/////
+Бакунов О.С. backend

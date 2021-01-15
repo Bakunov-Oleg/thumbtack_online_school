@@ -1,0 +1,3207 @@
+package net.thumbtack.school.hiring.dao;
+
+import net.thumbtack.school.hiring.ServerException;
+import net.thumbtack.school.hiring.dto.RequirementDto;
+import net.thumbtack.school.hiring.model.*;
+
+import java.util.List;
+import java.util.Set;
+
+public interface EmployerDao {
+    public String insert(Employer employer, String token) throws ServerException;
+
+    public Employer changeDataEmployer(Employer employer);
+
+    public Employer getEmployerByToken(String token) throws ServerException;
+
+    public List<Vacancy> addVacancy(String token, Vacancy vacancy) throws ServerException;
+
+    public List<Vacancy> delVacancy(String token, Vacancy vacancy) throws ServerException;
+
+    public Vacancy addVacancySkill(Vacancy vacancy) throws ServerException;
+
+    public Vacancy removeVacancySkill(Vacancy vacancy) throws ServerException;
+
+    public Vacancy changeVacancySkill(Vacancy vacancy) throws ServerException;
+
+    public Set<Employee> getEmployeesSkillsAtRequirementLevel(Set<Requirement> requirements);
+
+    public Set<Employee> getEmployeesRequiredSkillsNotLowerRequiredLevel(Set<Requirement> requirements);//getEmployeesOneSkillPerLevelRequirement(Set<Skill> skills)
+
+    public Set<Employee> getEmployeesAnyoneSkillsAnyLevel(Set<Skill> skills);
+
+    public Set<Employee> getEmployeesOneSkillPerLevelRequirement(Set<Skill> skills);
+
+    public Boolean setVacancyNonActive(String token, Vacancy vacancy) throws ServerException;
+    public Boolean setVacancyActive(String token, Vacancy vacancy) throws ServerException;
+
+    //public ArrayList<String> getVacancyActive(String token);
+    //public ArrayList<String> getVacancyNonActive(String token);
+    //public ArrayList<String> getVacancyAll(String token);
+
+
+    public Boolean acceptEmployeeToJob(String login) throws ServerException;
+
+}
+package net.thumbtack.school.hiring.model;
+
+import net.thumbtack.school.hiring.TypeUser;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+public class Employer extends User {
+
+    private String companyName;
+    private String adress;
+    private String token;
+
+    private List<Vacancy> vacancies;
+    private List<Vacancy> vacanciesActive;
+    private List<Vacancy> vacanciesNonActive;
+
+    public Employer(String companyName, String adress, String eMail, String surname, String name, String middleName, String login, String password, String token) {
+        super(surname, name, middleName, eMail, login, password, TypeUser.Employer);
+        this.companyName = companyName;
+        this.adress = adress;
+        this.token = token;
+        vacancies = new ArrayList<>();
+        vacanciesActive = new ArrayList<>();
+        vacanciesNonActive = new ArrayList<>();
+
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public String getAdress() {
+        return adress;
+    }
+
+    public void setAdress(String adress) {
+        this.adress = adress;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public void addVacancy(Vacancy vacancy) {
+        vacancies.add(vacancy);
+        //vacanciesActive.add(vacancy);
+    }
+
+    public void delVacancy(Vacancy vacancy) {
+        List<Vacancy> toDel = new ArrayList<>();
+        for (Vacancy vacancy1 : vacancies){
+            if (vacancy.getVacancyName().equals(vacancy1.getVacancyName())){
+                    toDel.add(vacancy1);
+            }
+        }
+
+        vacancies.removeAll(toDel);
+        vacanciesActive.removeAll(toDel);
+        vacanciesNonActive.removeAll(toDel);
+    }
+
+    public void setVacanciesActive(Vacancy vacancyActive) {
+        vacanciesActive.add(vacancyActive);
+        vacanciesNonActive.remove(vacancyActive);
+    }
+
+    public void setVacanciesNonActive(Vacancy vacancyNonActive) {
+        vacanciesActive.remove(vacancyNonActive);
+        vacanciesNonActive.add(vacancyNonActive);
+    }
+
+    public List<Vacancy> getVacancies() {
+        return vacancies;
+    }
+
+    public List<Vacancy> getVacanciesActive() {
+        return vacanciesActive;
+    }
+
+    public List<Vacancy> getVacanciesNonActive() {
+        return vacanciesNonActive;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Employer employer = (Employer) o;
+        return Objects.equals(companyName, employer.companyName) &&
+                Objects.equals(adress, employer.adress) &&
+                Objects.equals(token, employer.token) &&
+                Objects.equals(vacancies, employer.vacancies) &&
+                Objects.equals(vacanciesActive, employer.vacanciesActive) &&
+                Objects.equals(vacanciesNonActive, employer.vacanciesNonActive);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(companyName, adress, token, vacancies, vacanciesActive, vacanciesNonActive);
+    }
+}
+package net.thumbtack.school.hiring.service;
+
+import com.google.common.collect.TreeMultimap;
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
+import net.thumbtack.school.hiring.ServerErrorCode;
+import net.thumbtack.school.hiring.ServerException;
+import net.thumbtack.school.hiring.dao.EmployeeDao;
+import net.thumbtack.school.hiring.daoimpl.EmployeeDaoImpl;
+import net.thumbtack.school.hiring.dto.RequirementDto;
+import net.thumbtack.school.hiring.dto.SkillDto;
+import net.thumbtack.school.hiring.dto.VacancyDto;
+import net.thumbtack.school.hiring.dto.request.GetUserByTokenDtoRequest;
+import net.thumbtack.school.hiring.dto.request.employee.DataEmployeeRequest;
+import net.thumbtack.school.hiring.dto.request.employee.RegisterEmployeeDtoRequest;
+import net.thumbtack.school.hiring.dto.request.employee.SkillsEmployeeDtoRequest;
+import net.thumbtack.school.hiring.dto.request.vacancy.GetVacancyDtoRequest;
+import net.thumbtack.school.hiring.dto.response.ErrorDtoResponse;
+import net.thumbtack.school.hiring.dto.response.GetUserStatusDtoResponse;
+import net.thumbtack.school.hiring.dto.response.SkillsDtoResponse;
+import net.thumbtack.school.hiring.dto.response.employee.DataEmployeeResponse;
+import net.thumbtack.school.hiring.dto.response.employee.RegisterEmployeeDtoResponse;
+import net.thumbtack.school.hiring.dto.response.vacancy.GetListVacancyDroResponce;
+import net.thumbtack.school.hiring.dto.response.vacancy.GetVacancyDtoResponce;
+import net.thumbtack.school.hiring.dto.response.vacancy.GetVacancySortedByNumberOfSkillsDtoResponce;
+import net.thumbtack.school.hiring.model.Employee;
+import net.thumbtack.school.hiring.model.Requirement;
+import net.thumbtack.school.hiring.model.Skill;
+import net.thumbtack.school.hiring.model.Vacancy;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static net.thumbtack.school.hiring.ServerErrorCode.*;
+
+public class EmployeeService {
+    private final EmployeeDao employeeDao = new EmployeeDaoImpl();
+    private static final Gson gson = new Gson();
+
+    public EmployeeService() {
+    }
+
+    public String registerEmployee(String requestJsonString) throws ServerException {
+        RegisterEmployeeDtoRequest regEmployeeDtoReq = classFromJson(requestJsonString, RegisterEmployeeDtoRequest.class);
+        if (regEmployeeDtoReq.validate()) {
+            Employee employee = new Employee(regEmployeeDtoReq.getSurname(), regEmployeeDtoReq.getName(), regEmployeeDtoReq.getMiddleName(), regEmployeeDtoReq.getEMail(), regEmployeeDtoReq.getLogin(), regEmployeeDtoReq.getPassword(), regEmployeeDtoReq.getToken());
+            RegisterEmployeeDtoResponse regResponce = new RegisterEmployeeDtoResponse(employeeDao.insert(employee, regEmployeeDtoReq.getToken()));
+            return gson.toJson(regResponce);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String addEmployeeSkills(String requestJsonString) throws ServerException {
+        SkillsEmployeeDtoRequest addSkillsEmployee = classFromJson(requestJsonString, SkillsEmployeeDtoRequest.class);
+        if (addSkillsEmployee.validate()) {
+            String token = addSkillsEmployee.getToken();
+            Employee employee = employeeDao.getEmployeeByToken(token);
+            Set<Skill> skills = employeeDao.addSkills(employee, addSkillsEmployee.getSkills());
+            Set<SkillDto> skillsDto = new HashSet<>();
+            for (Skill skill : skills) {
+                skillsDto.add(new SkillDto(skill.getName(), skill.getLevel()));
+            }
+            SkillsDtoResponse skillsResp = new SkillsDtoResponse(skillsDto);
+            return gson.toJson(skillsResp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String deleteEmployeeSkills(String requestJsonString) throws ServerException {
+        SkillsEmployeeDtoRequest delSkillsEmployee = classFromJson(requestJsonString, SkillsEmployeeDtoRequest.class);
+        if (delSkillsEmployee.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(delSkillsEmployee.getToken());
+            Set<Skill> skills = employeeDao.delSkills(employee, delSkillsEmployee.getSkills());
+            Set<SkillDto> skillsDto = new HashSet<>();
+            for (Skill skill : skills) {
+                skillsDto.add(new SkillDto(skill.getName(), skill.getLevel()));
+            }
+            SkillsDtoResponse skillsResp = new SkillsDtoResponse(skillsDto);
+            return gson.toJson(skillsResp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String changeEmployeeSkillsLevel(String requestJsonString) throws ServerException {
+        SkillsEmployeeDtoRequest changeSkillsEmployee = classFromJson(requestJsonString, SkillsEmployeeDtoRequest.class);
+        if (changeSkillsEmployee.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(changeSkillsEmployee.getToken());
+            Set<Skill> skills = employeeDao.changeLevelSkills(employee, changeSkillsEmployee.getSkills());
+            Set<SkillDto> skillsDto = new HashSet<>();
+            for (Skill skill : skills) {
+                skillsDto.add(new SkillDto(skill.getName(), skill.getLevel()));
+            }
+            SkillsDtoResponse skillsResp = new SkillsDtoResponse(skillsDto);
+            return gson.toJson(skillsResp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String setActiveProfile(String requestJsonString) throws ServerException {
+        GetUserByTokenDtoRequest request = classFromJson(requestJsonString, GetUserByTokenDtoRequest.class);
+        if (request.validate()){
+            GetUserStatusDtoResponse response = new GetUserStatusDtoResponse(employeeDao.setEmployeeActive(request.getToken()));
+            return gson.toJson(response);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String setNonActiveProfile(String requestJsonString) throws ServerException {
+        GetUserByTokenDtoRequest request = classFromJson(requestJsonString, GetUserByTokenDtoRequest.class);
+        if (request.validate()){
+            GetUserStatusDtoResponse response = new GetUserStatusDtoResponse(!employeeDao.setEmployeeNonActive(request.getToken()));
+            return gson.toJson(response);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String changeEmployeeData(String stringJson) throws ServerException {
+        DataEmployeeRequest dataReq = classFromJson(stringJson, DataEmployeeRequest.class);
+        if (dataReq.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(dataReq.getToken());
+            Employee newEmployee = new Employee(dataReq.getSurname(), dataReq.getName(), dataReq.getMiddleName(), dataReq.getEMail(), dataReq.getLogin(), dataReq.getPassword(), dataReq.getToken());
+            Set<Skill> newEmployeeSkills = new HashSet<>();
+            for (SkillDto skill : dataReq.getSkills()) {
+                newEmployeeSkills.add(new Skill(skill.getName(), skill.getLevel()));
+            }
+            newEmployee.addSkills(newEmployeeSkills);
+            Employee respEmpl = employeeDao.changeDataEmployee(employee, newEmployee);
+            Set<SkillDto> skillsDto = new HashSet<>();
+            for (Skill skill : respEmpl.getSkills()) {
+                skillsDto.add(new SkillDto(skill.getName(), skill.getLevel()));
+            }
+            DataEmployeeResponse dataResp = new DataEmployeeResponse(respEmpl.getToken(), respEmpl.getSurname(), respEmpl.getName(), respEmpl.getMiddleName(), respEmpl.getEMail(), respEmpl.getLogin(), respEmpl.getPassword(), skillsDto);
+            return gson.toJson(dataResp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String getVacanciesSkillsAtRequirementLevel(String stringJson) throws ServerException { //навыки на уровне требуемых
+        GetVacancyDtoRequest vacancyReq = classFromJson(stringJson, GetVacancyDtoRequest.class);
+        if (vacancyReq.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(vacancyReq.getToken());
+            Set<Vacancy> vacancyes = employeeDao.getVacanciesSkillsAtRequirementLevel(employee.getSkills());
+            Set<VacancyDto> vacancyesDto = new HashSet<>();
+            for (Vacancy vacancy : vacancyes) {
+                Set<RequirementDto> requirementDtoSet = new HashSet<>();
+                for (Requirement requirement : vacancy.getRequirement()) {
+                    requirementDtoSet.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+                }
+                vacancyesDto.add(new VacancyDto(vacancy.getVacancyName(), vacancy.getSalary(), requirementDtoSet, vacancy.getEmployer()));
+            }
+
+            return gson.toJson(new GetVacancyDtoResponce(vacancyesDto));
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String getVacanciesRequiredSkillsNotLowerRequiredLevel(String stringJson) throws ServerException {//навыке на уровне обязательных
+        GetVacancyDtoRequest vacancyReq = classFromJson(stringJson, GetVacancyDtoRequest.class);
+        if (vacancyReq.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(vacancyReq.getToken());
+            Set<Vacancy> vacancyes = employeeDao.getVacanciesRequiredSkillsNotLowerRequiredLevel(employee.getSkills());
+            Set<VacancyDto> vacancyesDto = new HashSet<>();
+            for (Vacancy vacancy : vacancyes) {
+                Set<RequirementDto> requirementDtoSet = new HashSet<>();
+                for (Requirement requirement : vacancy.getRequirement()) {
+                    requirementDtoSet.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+                }
+                vacancyesDto.add(new VacancyDto(vacancy.getVacancyName(), vacancy.getSalary(), requirementDtoSet, vacancy.getEmployer()));
+            }
+            return gson.toJson(new GetVacancyDtoResponce(vacancyesDto));
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String getVacanciesAnyoneSkillsAnyLevel(String stringJson) throws ServerException {
+        GetVacancyDtoRequest vacancyReq = classFromJson(stringJson, GetVacancyDtoRequest.class);
+        if (vacancyReq.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(vacancyReq.getToken());
+            Set<Vacancy> vacancyes = employeeDao.getVacanciesAnyoneSkillsAnyLevel(employee.getSkills());
+            Set<VacancyDto> vacancyesDto = new HashSet<>();
+            for (Vacancy vacancy : vacancyes) {
+                Set<RequirementDto> requirementDtoSet = new HashSet<>();
+                for (Requirement requirement : vacancy.getRequirement()) {
+                    requirementDtoSet.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+                }
+                vacancyesDto.add(new VacancyDto(vacancy.getVacancyName(), vacancy.getSalary(), requirementDtoSet, vacancy.getEmployer()));
+            }
+            return gson.toJson(new GetVacancyDtoResponce(vacancyesDto));
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String getVacanciesSortedByNumberOfSkills(String stringJson) throws ServerException {
+        GetVacancyDtoRequest vacancyReq = classFromJson(stringJson, GetVacancyDtoRequest.class);
+        if (vacancyReq.validate()) {
+            Employee employee = employeeDao.getEmployeeByToken(vacancyReq.getToken());
+            TreeMultimap<Integer, Vacancy> vacancyes = TreeMultimap.create(Integer::compareTo, Vacancy::compareTo);
+            vacancyes = employeeDao.getVacanciesSortedByNumberOfSkills(employee.getSkills());
+            TreeMultimap<Integer, VacancyDto> vacancyesDto = TreeMultimap.create(Integer::compareTo, VacancyDto::compareTo);
+            for(Integer numSkill : vacancyes.keySet()){
+                for (Vacancy vacancy : vacancyes.get(numSkill)){
+                    Set<RequirementDto> requirementDtoSet = new HashSet<>();
+                    for (Requirement requirement : vacancy.getRequirement()) {
+                        requirementDtoSet.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+                    }
+                    vacancyesDto.put(numSkill, new VacancyDto(vacancy.getVacancyName(), vacancy.getSalary(), requirementDtoSet, vacancy.getEmployer()));
+                }
+            }
+            GetVacancySortedByNumberOfSkillsDtoResponce responce = new GetVacancySortedByNumberOfSkillsDtoResponce(vacancyesDto);
+            List<VacancyDto> sortVacancyes = new ArrayList<>();
+            int maxCountSkills = 0;
+            for (Integer key: responce.getVacancyes().keySet()){
+                maxCountSkills = Math.max(maxCountSkills, key);
+            }
+            for(int i = maxCountSkills; i > 0; i--){
+                for (VacancyDto vacancyDto : responce.getVacancyes().get(i)){
+                    sortVacancyes.add(vacancyDto);
+                }
+            }
+
+            GetListVacancyDroResponce listResponce = new GetListVacancyDroResponce(sortVacancyes);
+
+            return gson.toJson(listResponce);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String loginLogoutOnServer(String stringJson){
+        return null;
+    }
+
+    public String exitOnServer(String stringJson){
+        return null;
+    }
+
+    private <T> T classFromJson(String requestJsonString, Class<T> inClass) throws ServerException {
+        if (requestJsonString == null) throw new ServerException(NULL_REQUEST_STRING);
+        try {
+            return gson.fromJson(requestJsonString, inClass);
+        } catch (JsonSyntaxException ex) {
+            throw new ServerException(JSON_SYNTAX_EXCEPTION);
+        }
+    }
+
+    private String returnErrorDtoResponse(ServerErrorCode error) {
+        ErrorDtoResponse errorResponce = new ErrorDtoResponse(error);
+        return gson.toJson(errorResponce);
+    }
+}
+package net.thumbtack.school.hiring.service;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
+import net.thumbtack.school.hiring.ServerErrorCode;
+import net.thumbtack.school.hiring.ServerException;
+import net.thumbtack.school.hiring.dao.EmployerDao;
+import net.thumbtack.school.hiring.daoimpl.EmployerDaoImpl;
+import net.thumbtack.school.hiring.dto.EmployeeDto;
+import net.thumbtack.school.hiring.dto.RequirementDto;
+import net.thumbtack.school.hiring.dto.SkillDto;
+import net.thumbtack.school.hiring.dto.VacancyDto;
+import net.thumbtack.school.hiring.dto.request.GetUserByLoginDtoRequest;
+import net.thumbtack.school.hiring.dto.request.SkillSetDto;
+import net.thumbtack.school.hiring.dto.request.employer.DataEmployerRequest;
+import net.thumbtack.school.hiring.dto.request.employer.GetEmployerByTokenDtoRequest;
+import net.thumbtack.school.hiring.dto.request.employer.RegisterEmployerDtoRequest;
+import net.thumbtack.school.hiring.dto.request.vacancy.ChangeActivityVacancyDtoRequest;
+import net.thumbtack.school.hiring.dto.request.vacancy.RequirementsSetDto;
+import net.thumbtack.school.hiring.dto.request.vacancy.VacancyDtoRequest;
+import net.thumbtack.school.hiring.dto.response.ErrorDtoResponse;
+import net.thumbtack.school.hiring.dto.response.GetUserStatusDtoResponse;
+import net.thumbtack.school.hiring.dto.response.employee.getEmployesDtoResponse;
+import net.thumbtack.school.hiring.dto.response.employer.DataEmployerResponse;
+import net.thumbtack.school.hiring.dto.response.employer.RegisterEmployerDtoResponse;
+import net.thumbtack.school.hiring.dto.response.vacancy.GetVacancyDtoResponce;
+import net.thumbtack.school.hiring.dto.response.vacancy.GetVacancyStatusDto;
+import net.thumbtack.school.hiring.model.*;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static net.thumbtack.school.hiring.ServerErrorCode.*;
+
+public class EmployerService {
+    private static final EmployerDao employerDao = new EmployerDaoImpl();
+    private static final Gson gson = new Gson();
+
+    public EmployerService() {
+    }
+
+    public String registerEmployer(String requestJsonString) throws ServerException {
+        RegisterEmployerDtoRequest regReq = classFromJson(requestJsonString, RegisterEmployerDtoRequest.class);
+
+        if (regReq.validate()) {
+            Employer employer = new Employer(regReq.getCompanyName(), regReq.getAdress(), regReq.getEMail(), regReq.getSurname(), regReq.getName(), regReq.getMiddleName(), regReq.getLogin(), regReq.getPassword(), regReq.getToken());
+            RegisterEmployerDtoResponse regResponce = new RegisterEmployerDtoResponse(employerDao.insert(employer, employer.getToken()));
+            return gson.toJson(regResponce);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String changeDataEmployer(String stringJson) throws ServerException {
+        DataEmployerRequest dataReq = classFromJson(stringJson, DataEmployerRequest.class);
+        if (dataReq.validate()) {
+            Employer employer = new Employer(dataReq.getCompanyName(), dataReq.getAdress(), dataReq.getEMail(), dataReq.getSurname(), dataReq.getName(), dataReq.getMiddleName(),
+                    dataReq.getLogin(), dataReq.getPassword(), dataReq.getToken());
+            Employer newEmployer = employerDao.changeDataEmployer(employer);
+            DataEmployerResponse dataResp = new DataEmployerResponse(newEmployer.getToken(), newEmployer.getSurname(), newEmployer.getName(), newEmployer.getMiddleName(), newEmployer.getEMail(), newEmployer.getLogin(), newEmployer.getPassword(), newEmployer.getCompanyName(), newEmployer.getAdress());
+            return gson.toJson(dataResp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String addVacancy(String requestJsonString) throws ServerException {
+        VacancyDtoRequest addVacancyReq = classFromJson(requestJsonString, VacancyDtoRequest.class);
+        if (addVacancyReq.validate()) {
+            Vacancy vacancy;
+            List<Vacancy> vacancyList = new ArrayList<>();
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            Set<Requirement> requirements = new HashSet<>();
+            for (RequirementDto requirementDto : addVacancyReq.getRequirement()) {
+                requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+            }
+            vacancy = new Vacancy(addVacancyReq.getVacancyName(), addVacancyReq.getSalary());
+            vacancy.addRequirement(requirements);
+            vacancyList = employerDao.addVacancy(addVacancyReq.getToken(), vacancy);
+            for (Vacancy vacancy1 : vacancyList) {
+                vacancyDtoSet.add(vacancyToVacancyDto(vacancy1));
+            }
+            GetVacancyDtoResponce resp = new GetVacancyDtoResponce(vacancyDtoSet);
+            return gson.toJson(resp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String delVacancy(String requestJsonString) throws ServerException {
+        VacancyDtoRequest delVac = classFromJson(requestJsonString, VacancyDtoRequest.class);
+        if (delVac.validate()) {
+            Vacancy vacancy;
+            List<Vacancy> vacancies = new ArrayList<>();
+            Set<VacancyDto> vacanciesDto = new HashSet<>();
+            Set<Requirement> requirements = new HashSet<>();
+            for (RequirementDto requirementDto : delVac.getRequirement()) {
+                requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+            }
+            vacancy = new Vacancy(delVac.getVacancyName(), delVac.getSalary());
+            vacancies = employerDao.delVacancy(delVac.getToken(), vacancy);
+            for (Vacancy vacancy1 : vacancies) {
+                vacanciesDto.add(vacancyToVacancyDto(vacancy1));
+            }
+            GetVacancyDtoResponce resp = new GetVacancyDtoResponce(vacanciesDto);
+            return gson.toJson(resp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String addVacancySkill(String requestJsonString) throws ServerException {
+        VacancyDtoRequest skillVacancyReq = classFromJson(requestJsonString, VacancyDtoRequest.class);
+        if (skillVacancyReq.validate()) {
+            Vacancy vacancy;
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            Set<Requirement> requirements = new HashSet<>();
+            for (RequirementDto requirementDto : skillVacancyReq.getRequirement()) {
+                requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+            }
+            vacancy = new Vacancy(skillVacancyReq.getVacancyName(), skillVacancyReq.getSalary());
+            vacancy.addRequirement(requirements);
+            vacancyDtoSet.add(vacancyToVacancyDto(employerDao.addVacancySkill(vacancy)));
+
+            GetVacancyDtoResponce resp = new GetVacancyDtoResponce(vacancyDtoSet);
+            return gson.toJson(resp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String removeVacancySkill(String requestJsonString) throws ServerException {
+        VacancyDtoRequest skillVacancyReq = classFromJson(requestJsonString, VacancyDtoRequest.class);
+        if (skillVacancyReq.validate()) {
+            Vacancy vacancy;
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            Set<Requirement> requirements = new HashSet<>();
+            for (RequirementDto requirementDto : skillVacancyReq.getRequirement()) {
+                requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+            }
+            vacancy = new Vacancy(skillVacancyReq.getVacancyName(), skillVacancyReq.getSalary());
+            vacancy.addRequirement(requirements);
+            vacancyDtoSet.add(vacancyToVacancyDto(employerDao.removeVacancySkill(vacancy)));
+
+            GetVacancyDtoResponce resp = new GetVacancyDtoResponce(vacancyDtoSet);
+            return gson.toJson(resp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String changeVacancySkill(String requestJsonString) throws ServerException {
+        VacancyDtoRequest skillVacancyReq = classFromJson(requestJsonString, VacancyDtoRequest.class);
+        if (skillVacancyReq.validate()) {
+            Vacancy vacancy;
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            Set<Requirement> requirements = new HashSet<>();
+            for (RequirementDto requirementDto : skillVacancyReq.getRequirement()) {
+                requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+            }
+            vacancy = new Vacancy(skillVacancyReq.getVacancyName(), skillVacancyReq.getSalary());
+            vacancy.addRequirement(requirements);
+            vacancyDtoSet.add(vacancyToVacancyDto(employerDao.changeVacancySkill(vacancy)));
+
+            GetVacancyDtoResponce resp = new GetVacancyDtoResponce(vacancyDtoSet);
+            return gson.toJson(resp);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    public String getEmployeesSkillsAtRequirementLevel(String requestJsonString) throws ServerException {
+        Set<Employee> employees;
+        Set<EmployeeDto> employeesDto = new HashSet<>();
+        Set<Requirement> requirements = new HashSet<>();
+        RequirementsSetDto request = classFromJson(requestJsonString, RequirementsSetDto.class);
+        if (request.validate()) {
+            requirements = requirementDtoToRequirementSet(request.getRequirement());
+            employees = employerDao.getEmployeesSkillsAtRequirementLevel(requirements);
+            employeesDto = employeesToEmployeesDtoSet(employees);
+        }
+        getEmployesDtoResponse res = new getEmployesDtoResponse(employeesDto);
+        return gson.toJson(res);
+    }
+
+    public String getEmployeesRequiredSkillsNotLowerRequiredLevel(String requestJsonString) throws ServerException {
+        Set<Employee> employees;
+        Set<EmployeeDto> employeesDto = new HashSet<>();
+        Set<Requirement> requirements = new HashSet<>();
+        RequirementsSetDto request = classFromJson(requestJsonString, RequirementsSetDto.class);
+        if (request.validate()) {
+            requirements = requirementDtoToRequirementSet(request.getRequirement());
+            employees = employerDao.getEmployeesRequiredSkillsNotLowerRequiredLevel(requirements);
+            employeesDto = employeesToEmployeesDtoSet(employees);
+        }
+        getEmployesDtoResponse res = new getEmployesDtoResponse(employeesDto);
+        return gson.toJson(res);
+    }
+
+    public String getEmployeesAnyoneSkillsAnyLevel(String requestJsonString) throws ServerException {
+        Set<Employee> employees;
+        Set<EmployeeDto> employeesDto = new HashSet<>();
+        Set<Skill> skills = new HashSet<>();
+        SkillSetDto request = classFromJson(requestJsonString, SkillSetDto.class);
+        if (request.validate()) {
+            for (SkillDto skillDto : request.getSkillsDto()) {
+                skills.add(new Skill(skillDto.getName(), skillDto.getLevel()));
+            }
+            employees = employerDao.getEmployeesAnyoneSkillsAnyLevel(skills);
+            employeesDto = employeesToEmployeesDtoSet(employees);
+        }
+        getEmployesDtoResponse res = new getEmployesDtoResponse(employeesDto);
+        return gson.toJson(res);
+    }
+
+    public String getEmployeesOneSkillPerLevelRequirement(String requestJsonString) throws ServerException {
+        Set<Employee> employees;
+        Set<EmployeeDto> employeesDto = new HashSet<>();
+        Set<Skill> skills = new HashSet<>();
+        SkillSetDto request = classFromJson(requestJsonString, SkillSetDto.class);
+        if (request.validate()) {
+            for (SkillDto skillDto : request.getSkillsDto()) {
+                skills.add(new Skill(skillDto.getName(), skillDto.getLevel()));
+            }
+            employees = employerDao.getEmployeesOneSkillPerLevelRequirement(skills);
+            employeesDto = employeesToEmployeesDtoSet(employees);
+        }
+        getEmployesDtoResponse res = new getEmployesDtoResponse(employeesDto);
+        return gson.toJson(res);
+    }
+
+    public String setVacancyActive(String requestJsonString) throws ServerException {
+        ChangeActivityVacancyDtoRequest request = classFromJson(requestJsonString, ChangeActivityVacancyDtoRequest.class);
+        Vacancy vacancy;
+        Boolean statusVacancy;
+        if (request.validate()) {
+            vacancy = vacancyDtoToVacancy(request.getVacancy());
+            statusVacancy = employerDao.setVacancyActive(request.getToken(), vacancy);
+            GetVacancyStatusDto response = new GetVacancyStatusDto(statusVacancy);
+            return gson.toJson(response);
+        } else {
+            return "JSON ERROR".toString();
+        }
+    }
+
+    public String setVacancyNonActive(String requestJsonString) throws ServerException {
+        ChangeActivityVacancyDtoRequest request = classFromJson(requestJsonString, ChangeActivityVacancyDtoRequest.class);
+        Vacancy vacancy;
+        Boolean statusVacancy;
+        if (request.validate()) {
+            vacancy = vacancyDtoToVacancy(request.getVacancy());
+            statusVacancy = employerDao.setVacancyNonActive(request.getToken(), vacancy);
+            GetVacancyStatusDto response = new GetVacancyStatusDto(!statusVacancy);
+            return gson.toJson(response);
+        } else {
+            return "JSON ERROR".toString();
+        }
+    }
+
+    public String getVacancyActive(String requestJsonString) throws ServerException {
+        GetEmployerByTokenDtoRequest request = classFromJson(requestJsonString, GetEmployerByTokenDtoRequest.class);
+        if (request.validate()) {
+            Employer employer = employerDao.getEmployerByToken(request.getToken());
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            for (Vacancy vacancy : employer.getVacanciesActive()) {
+                vacancyDtoSet.add(vacancyToVacancyDto(vacancy));
+            }
+            return gson.toJson(new GetVacancyDtoResponce(vacancyDtoSet));
+        } else {
+            return "JSON ERROR".toString();
+        }
+    }
+
+    public String getVacancyNonActive(String requestJsonString) throws ServerException {
+        GetEmployerByTokenDtoRequest request = classFromJson(requestJsonString, GetEmployerByTokenDtoRequest.class);
+        if (request.validate()) {
+            Employer employer = employerDao.getEmployerByToken(request.getToken());
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            for (Vacancy vacancy : employer.getVacanciesNonActive()) {
+                vacancyDtoSet.add(vacancyToVacancyDto(vacancy));
+            }
+            return gson.toJson(new GetVacancyDtoResponce(vacancyDtoSet));
+        } else {
+            return "JSON ERROR".toString();
+        }
+    }
+
+    public String getVacancyAll(String requestJsonString) throws ServerException {
+        GetEmployerByTokenDtoRequest request = classFromJson(requestJsonString, GetEmployerByTokenDtoRequest.class);
+        if (request.validate()) {
+            Employer employer = employerDao.getEmployerByToken(request.getToken());
+            Set<VacancyDto> vacancyDtoSet = new HashSet<>();
+            for (Vacancy vacancy : employer.getVacancies()) {
+                vacancyDtoSet.add(vacancyToVacancyDto(vacancy));
+            }
+            return gson.toJson(new GetVacancyDtoResponce(vacancyDtoSet));
+        } else {
+            return "JSON ERROR".toString();
+        }
+    }
+
+    public String acceptEmployeeToJob(String requestJsonString) throws ServerException {
+        GetUserByLoginDtoRequest request = classFromJson(requestJsonString, GetUserByLoginDtoRequest.class);
+        if (request.validate()){
+            GetUserStatusDtoResponse response = new GetUserStatusDtoResponse(!employerDao.acceptEmployeeToJob(request.getLogin()));
+            return gson.toJson(response);
+        }
+        return returnErrorDtoResponse(REQUEST_NOT_VALIDE);
+    }
+
+    private <T> T classFromJson(String requestJsonString, Class<T> inClass) throws ServerException {
+        if (requestJsonString == null) throw new ServerException(NULL_REQUEST_STRING);
+        try {
+            return gson.fromJson(requestJsonString, inClass);
+        } catch (JsonSyntaxException ex) {
+            throw new ServerException(JSON_SYNTAX_EXCEPTION);
+        }
+    }
+
+    private String returnErrorDtoResponse(ServerErrorCode error) {
+        ErrorDtoResponse errorResponce = new ErrorDtoResponse(error);
+        return gson.toJson(errorResponce);
+    }
+
+    private VacancyDto vacancyToVacancyDto(Vacancy vacancy) {
+        Set<RequirementDto> requirementsDto = new HashSet<>();
+        for (Requirement requirement : vacancy.getRequirement()) {
+            requirementsDto.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+        }
+        return new VacancyDto(vacancy.getVacancyName(), vacancy.getSalary(), requirementsDto, vacancy.getEmployer());
+    }
+
+    private Vacancy vacancyDtoToVacancy(VacancyDto vacancyDto) {
+        Set<Requirement> requirements = new HashSet<>();
+        for (RequirementDto requirementDto : vacancyDto.getRequirement()) {
+            requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+        }
+        return new Vacancy(vacancyDto.getVacancyName(), vacancyDto.getSalary(), requirements, vacancyDto.getEmployer());
+    }
+
+    public Vacancy vacancyDtoToVacancy(String vacancyName, Integer salary, Set<RequirementDto> requirement) {
+        VacancyDto vacancyDto = new VacancyDto(vacancyName, salary);
+        vacancyDto.addRequirement(requirement);
+        Set<Requirement> requirements = new HashSet<>();
+        for (RequirementDto requirementDto : vacancyDto.getRequirement()) {
+            requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+        }
+        return new Vacancy(vacancyDto.getVacancyName(), vacancyDto.getSalary(), requirements, vacancyDto.getEmployer());
+    }
+
+    private Set<Employee> employeesDtoToEmployeesSet(Set<EmployeeDto> employeesDto) {
+        Set<Employee> employees = new HashSet<>();
+        for (EmployeeDto emp : employeesDto) {
+            employees.add(new Employee(emp.getSurname(), emp.getName(), emp.getMiddleName(), emp.getEMail(), emp.getLogin(), emp.getPassword(), emp.getToken()));
+        }
+        return employees;
+    }
+
+    private Set<EmployeeDto> employeesToEmployeesDtoSet(Set<Employee> employees) {
+        Set<EmployeeDto> employeesDto = new HashSet<>();
+        for (Employee emp : employees) {
+            employeesDto.add(new EmployeeDto(emp.getSurname(), emp.getName(), emp.getMiddleName(), emp.getEMail(), emp.getLogin(), emp.getPassword(), emp.getToken()));
+        }
+        return employeesDto;
+    }
+
+    private Set<Requirement> requirementDtoToRequirementSet(Set<RequirementDto> requirementsDto) {
+        Set<Requirement> requirements = new HashSet<>();
+        for (RequirementDto requirementDto : requirementsDto) {
+            requirements.add(new Requirement(requirementDto.getName(), requirementDto.getLevel(), requirementDto.getRequired()));
+        }
+        return requirements;
+    }
+
+    private Set<RequirementDto> requirementsToRequirementsDtoSet(Set<Requirement> requirements) {
+        Set<RequirementDto> requirementsDto = new HashSet<>();
+        for (Requirement requirement : requirements) {
+            requirementsDto.add(new RequirementDto(requirement.getName(), requirement.getLevel(), requirement.getRequired()));
+        }
+        return requirementsDto;
+    }
+
+}
+package net.thumbtack.school.hiring.dto.response.vacancy;
+
+
+import net.thumbtack.school.hiring.dto.VacancyDto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class GetListVacancyDroResponce {
+    List<VacancyDto> vacancyes = new ArrayList<>();
+
+    public GetListVacancyDroResponce(List<VacancyDto> vacancyes) {
+        this.vacancyes = vacancyes;
+    }
+
+    public List<VacancyDto> getVacancyes() {
+        return vacancyes;
+    }
+}
+package net.thumbtack.school.hiring.database;
+
+
+import com.google.common.collect.TreeMultimap;
+import net.thumbtack.school.hiring.ServerErrorCode;
+import net.thumbtack.school.hiring.ServerException;
+import net.thumbtack.school.hiring.TypeUser;
+import net.thumbtack.school.hiring.model.*;
+import org.apache.commons.collections4.BidiMap;
+import org.apache.commons.collections4.bidimap.DualHashBidiMap;
+
+import java.io.Serializable;
+import java.util.*;
+
+public final class Database implements Serializable {
+
+    private static Database database;
+
+    private BidiMap<String, User> userByToken = new DualHashBidiMap<>();
+    private Map<String, User> userByLogin = new HashMap<>();
+
+    private SortedSet<Skill> allSkills = new TreeSet<>(Skill::compare);
+    private TreeMultimap<Skill, Employee> employeeBySkill = TreeMultimap.create(Skill::compare, User::compare);
+    private TreeMultimap<String, Vacancy> vacancyBySkillName = TreeMultimap.create(String::compareTo, Vacancy::compare);
+    private TreeMultimap<Boolean, Vacancy> vacancyByStatusActivity = TreeMultimap.create(Boolean::compareTo, Vacancy::compare);
+    private TreeMultimap<Boolean, Employee> employeeByStatusActivity = TreeMultimap.create(Boolean::compareTo, Employee::compare);
+
+    public Database() {
+    }
+
+    public static Database getDatabase() {
+        if (database == null) {
+            database = new Database();
+        }
+        return database;
+    }
+
+    private void addUserByToken(String token, User user) {
+        userByToken.put(token, user);
+    }
+
+    private void addUserByLogin(String login, User user) throws ServerException {
+        if (userByLogin.putIfAbsent(login, user) != null) throw new ServerException(ServerErrorCode.LOGIN_ALREADY_USED);
+    }
+
+    public String insertUser(User user, String token) throws ServerException {
+        addUserByLogin(user.getLogin(), user);
+        addUserByToken(token, user);
+        return userByToken.getKey(user);
+    }
+
+    public Employee getEmployeeByLogin(String login) throws ServerException {
+        try {
+            if (userByLogin.get(login).getTypeUser() == TypeUser.Employee) {
+                return (Employee) userByLogin.get(login);
+            } else {
+                throw new ServerException(ServerErrorCode.EMPLOYEE_BY_LOGIN_IS_EMPLOYER);
+            }
+        } catch (NullPointerException ex) {
+            throw new ServerException(ServerErrorCode.INCORRECT_LOGIN);
+        }
+    }
+
+    public Employee getEmployeeByToken(String token) throws ServerException {
+
+        if (userByToken.get(token) == null) throw new ServerException(ServerErrorCode.INCORRECT_TOKEN);
+        if (userByToken.get(token).getTypeUser() == TypeUser.Employee) {
+            return (Employee) userByToken.get(token);
+        } else {
+            throw new ServerException(ServerErrorCode.EMPLOYEE_BY_TOKEN_IS_EMPLOYER);
+        }
+    }
+
+    public Boolean setEmployeeActive(String token) throws ServerException {
+        Employee employee = getEmployeeByToken(token);
+        employee.setProfileActive();
+        employeeByStatusActivity.put(true, employee);
+        employeeByStatusActivity.remove(false, employee);
+        return employeeByStatusActivity.get(true).contains(employee);
+    }
+
+    public Boolean setEmployeeNonActive(String token) throws ServerException {
+        Employee employee = getEmployeeByToken(token);
+        employee.setProfileNonActive();
+        employeeByStatusActivity.put(false, employee);
+        employeeByStatusActivity.remove(true, employee);
+        return employeeByStatusActivity.get(false).contains(employee);
+    }
+
+    public Employer getEmployerByLogin(String login) throws ServerException {
+        if (userByLogin.get(login) == null) throw new ServerException(ServerErrorCode.INCORRECT_LOGIN);
+        if (userByLogin.get(login).getTypeUser() == TypeUser.Employer) {
+            return (Employer) userByLogin.get(login);
+        } else {
+            throw new ServerException(ServerErrorCode.EMPLOYER_BY_LOGIN_IS_EMPLOYEE);
+        }
+    }
+
+    public Employer getEmployerByToken(String token) throws ServerException {
+        if (userByToken.get(token) == null) throw new ServerException(ServerErrorCode.INCORRECT_TOKEN);
+        if (userByToken.get(token).getTypeUser() == TypeUser.Employer) {
+            return (Employer) userByToken.get(token);
+        } else {
+            throw new ServerException(ServerErrorCode.EMPLOYER_BY_TOKEN_IS_EMPLOYEE);
+        }
+    }
+
+    public Boolean acceptEmployeeToJob(String employeeLogin) throws ServerException {
+        return setEmployeeNonActive(getEmployeeByLogin(employeeLogin).getToken());
+    }
+
+    public NavigableSet<Employee> getEmployeesBySkill(Skill skill) {
+        return employeeBySkill.get(skill);
+    }
+
+    public Set<Skill> addSkillsEmployee(Employee employee, Set<Skill> skills) {
+        for (Skill skill : skills) {
+            employeeBySkill.put(skill, (Employee) userByToken.get(employee.getToken()));
+
+        }
+        ((Employee) userByToken.get(employee.getToken())).addSkills(skills);
+        allSkills.addAll(skills);
+        return ((Employee) userByToken.get(employee.getToken())).getSkills();
+    }
+
+    public Set<Skill> delSkillsEmployee(Employee employee, Set<Skill> skills) {
+        for (Skill skill : skills) {
+            employeeBySkill.remove(skill.getName(), userByToken.get(employee.getToken()));
+        }
+        ((Employee) userByToken.get(employee.getToken())).delSkills(skills);
+
+        return ((Employee) userByToken.get(employee.getToken())).getSkills();
+    }
+
+    public Set<Skill> changeLevelSkillsEmployee(Employee employee, Set<Skill> skills) throws ServerException {
+        employee = getEmployeeByToken(employee.getToken());
+        employee.changeLevelSkills(skills);
+
+        return ((Employee) userByToken.get(employee.getToken())).getSkills();
+    }
+
+    public Employee changeDataEmployee(Employee employee, Employee newEmployee) {
+
+        addSkillsEmployee(employee, newEmployee.getSkills());
+
+        userByToken.replace(employee.getToken(), newEmployee);
+        userByLogin.replace(employee.getLogin(), newEmployee);
+
+        return (Employee) userByToken.get(employee.getToken());
+    }
+
+    public Employer changeDataEmployer(Employer employer) {
+        userByToken.replace(employer.getToken(), employer);
+        userByToken.replace(employer.getLogin(), employer);
+
+        return (Employer) userByToken.get(employer.getToken());
+    }
+
+    public List<Vacancy> addVacancy(String token, Vacancy vacancy) throws ServerException {
+        Employer employer = getEmployerByToken(token);
+        employer.addVacancy(vacancy);
+        setVacancyActive(token, vacancy);
+        for (Requirement requirement : vacancy.getRequirement()) {
+            vacancyBySkillName.put(requirement.getName(), vacancy);
+            allSkills.add(new Skill(requirement.getName(), requirement.getLevel()));
+        }
+
+        return getEmployerByToken(token).getVacancies();
+    }
+
+    public List<Vacancy> delVacancy(String token, Vacancy vacancy) throws ServerException {
+        Employer employer = getEmployerByToken(token);
+        employer.delVacancy(vacancy);
+        setVacancyNonActive(token, vacancy);
+        vacancyByStatusActivity.remove(true, vacancy);
+        vacancyByStatusActivity.remove(false, vacancy);
+        for (Requirement requirement : vacancy.getRequirement()) {
+            vacancyBySkillName.remove(requirement.getName(), vacancy);
+        }
+        return getEmployerByToken(token).getVacancies();
+    }
+
+    public Vacancy addSkillVacancy(Vacancy vacancy) throws ServerException {
+        Set<String> skillNameVacancy = new HashSet<>();
+        for (Requirement requirement : vacancy.getRequirement()) {
+            vacancyBySkillName.put(requirement.getName(), vacancy);
+            skillNameVacancy.add(requirement.getName());
+        }
+
+        for (String skill : skillNameVacancy) {
+            if (!vacancyBySkillName.get(skill).contains(vacancy)) {
+                return null;
+            }
+        }
+        return vacancy;
+    }
+
+    public Vacancy delSkillVacancy(Vacancy vacancy) throws ServerException {
+        Vacancy newVacancy;
+        NavigableSet<Vacancy> setVacancy = new TreeSet<>();
+        Set<String> skillNameVacancy = new HashSet<>();
+        for (Requirement req : vacancy.getRequirement()) {
+            setVacancy.addAll(vacancyBySkillName.get(req.getName()));
+            skillNameVacancy.add(req.getName());
+        }
+        for (Vacancy vacancy1 : setVacancy) {
+            if (vacancy.getVacancyName().equals(vacancy1.getVacancyName())) {
+                for (Requirement req : vacancy.getRequirement()) {
+                    vacancyBySkillName.remove(req.getName(), vacancy1);
+                }
+            }
+        }
+        for (String skill : skillNameVacancy) {
+            if (vacancyBySkillName.get(skill).contains(vacancy)) {
+                return null;
+            }
+        }
+        return vacancy;
+    }
+
+    public Vacancy changeSkillVacancy(Vacancy vacancy) throws ServerException {
+        NavigableSet<Vacancy> setVacancy = new TreeSet<>();
+        Set<String> skillNameVacancy = new HashSet<>();
+        for (Requirement req : vacancy.getRequirement()) {
+            setVacancy.addAll(vacancyBySkillName.get(req.getName()));
+        }
+        for (Vacancy vacancy1 : setVacancy) {
+            if (vacancy.getVacancyName().equals(vacancy1.getVacancyName())) {
+                for (Requirement req : vacancy.getRequirement()) {
+                    vacancyBySkillName.remove(req.getName(), vacancy1);
+                    vacancyBySkillName.put(req.getName(), vacancy);
+                }
+            }
+        }
+        for (Requirement req : vacancy.getRequirement()) {
+            if (!vacancyBySkillName.get(req.getName()).contains(vacancy)) {
+                return null;
+            }
+
+        }
+        return vacancy;
+    }
+
+    public Boolean setVacancyActive(String token, Vacancy vacancy) throws ServerException {
+        Employer employer = getEmployerByToken(token);
+        employer.setVacanciesActive(vacancy);
+        vacancyByStatusActivity.put(true, vacancy);
+        vacancyByStatusActivity.remove(false, vacancy);
+        return vacancyByStatusActivity.get(true).contains(vacancy);
+    }
+
+    public Boolean setVacancyNonActive(String token, Vacancy vacancy) throws ServerException {
+        Employer employer = getEmployerByToken(token);
+        employer.setVacanciesNonActive(vacancy);
+        vacancyByStatusActivity.remove(true, vacancy);
+        vacancyByStatusActivity.put(false, vacancy);
+        return vacancyByStatusActivity.get(false).contains(vacancy);
+    }
+
+    public Set<Employee> getEmployeesSkillsAtRequirementLevel(Set<Requirement> requirements) { //необходимые требоная, на необходимом уровне
+        Set<Employee> employees = new HashSet<>();
+        Set<Skill> skillsVacancy = new HashSet<>();
+        SortedSet<Skill> subSkillsVacancy = new TreeSet<>(Skill::compare);
+        SortedSet<Skill> subSkillsEmployee = new TreeSet<>(Skill::compare);
+
+        for (Requirement requirement : requirements) {
+            subSkillsVacancy.addAll(employeeBySkill.keySet().subSet(new Skill(requirement.getName(), requirement.getLevel()), new Skill(requirement.getName(), 6)));
+            subSkillsVacancy.add(new Skill(requirement.getName(), requirement.getLevel()));
+            skillsVacancy.add(new Skill(requirement.getName(), requirement.getLevel()));
+        }
+
+        for (Employee emoloyee : getEmployeeBySkillSet(subSkillsVacancy)) {
+            subSkillsEmployee.clear();
+
+            for (Skill skill : emoloyee.getSkills()) {
+                subSkillsEmployee.addAll(subSkillsVacancy.subSet(new Skill(skill.getName(), 0), new Skill(skill.getName(), skill.getLevel() + 1)));
+            }
+
+            if (subSkillsEmployee.containsAll(skillsVacancy)) {
+                employees.add((Employee) emoloyee);
+            }
+        }
+        return employees;
+    }
+
+    public Set<Employee> getEmployeeBySkillSet(Set<Skill> skills) {
+        Set<Employee> employees = new HashSet<>();
+
+        for (Skill skill : skills) {
+            employees.addAll(employeeBySkill.get(skill));
+            for(Skill subskill : employeeBySkill.keySet().subSet(skill, new Skill(skill.getName(), 6))){
+                employees.addAll(employeeBySkill.get(subskill));
+            }
+        }
+        return employees;
+    }
+
+    public Set<Employee> getEmployeesRequiredSkillsNotLowerRequiredLevel(Set<Requirement> skills) { //обязательные требования на уровне не ниже необходимого
+        Set<Requirement> requrementSkill = new HashSet<>();
+        for (Requirement skill : skills) {
+            if (skill.getRequired() == true) {
+                requrementSkill.add(new Requirement(skill.getName(), skill.getLevel(), skill.getRequired()));
+            }
+        }
+        if (requrementSkill.isEmpty() == false) {
+            return getEmployeesSkillsAtRequirementLevel(requrementSkill);
+        }
+        return null;
+    }
+
+    public Set<Employee> getEmployeesAnyoneSkillsAnyLevel(Set<Skill> skills) { //Необходимые требования на любом уровне
+        Set<Requirement> skillAtAnyLevel = new HashSet<>();
+        for (Skill skill : skills) {
+            skillAtAnyLevel.add(new Requirement(skill.getName(), 0, false));
+        }
+        if (skillAtAnyLevel.isEmpty() == false) {
+            return getEmployeesSkillsAtRequirementLevel(skillAtAnyLevel);
+        }
+        return null;
+    }
+
+    public Set<Employee> getEmployeesOneSkillPerLevelRequirement(Set<Skill> skills) {//Одно умение на уровне не ниже требуемого
+        Set<Employee> employees = new HashSet<>();
+        SortedSet<Skill> subSkills = new TreeSet<>(Skill::compare);
+        SortedSet<Skill> subSkillsEmployee = new TreeSet<>(Skill::compare);
+        for (Skill skill : skills) {
+            subSkills.addAll(employeeBySkill.keySet().subSet(skill, new Skill(skill.getName(), 6)));
+        }
+        subSkills.addAll(skills);
+
+        for (Employee employee : getEmployeeBySkillSet(subSkills)) {
+            subSkillsEmployee.clear();
+            for (Skill skill : employee.getSkills()) {
+                if (subSkills.contains(skill)) {
+                    employees.add(employee);
+                }
+            }
+        }
+        return employees;
+    }
+
+    //--список всех вакансий работодателей, для которых его набор умений соответствует требованиям работодателя на уровне не ниже уровня, указанного в требовании
+    public Set<Vacancy> getVacanciesSkillsAtRequirementLevel(Set<Skill> skills) {
+        Set<Vacancy> vacancies = new HashSet<>();
+        SortedSet<Skill> subSkillsEmployee = new TreeSet<>(Skill::compare);
+        Set<Skill> tempSkillsVacancy = new HashSet<>();
+
+        for (Skill skill : skills) {
+              subSkillsEmployee.addAll(allSkills.subSet(new Skill(skill.getName(), 0), skill));
+          }
+        subSkillsEmployee.addAll(skills);
+
+        for (Skill skill : subSkillsEmployee) {
+            vacancies.addAll(vacancyBySkillName.get(skill.getName()));
+        }
+
+        for (Vacancy vacancy : vacancies) {
+            tempSkillsVacancy.clear();
+            for (Requirement requirement : vacancy.getRequirement()) {
+                tempSkillsVacancy.add(new Skill(requirement.getName(), requirement.getLevel()));
+            }
+            if (!subSkillsEmployee.containsAll(tempSkillsVacancy)) {
+                if(vacancies.contains(vacancy)) vacancies.remove(vacancy);
+            }
+        }
+
+        return vacancies;
+    }
+
+    //getVacanciesRequiredSkillsNotLowerRequiredLevel
+    //--список всех вакансий работодателей, для которых его набор умений соответствует ОБЯХАТЕЛЬНЫМ требованиям работодателя на уровне не ниже уровня, указанного в требовании
+    public Set<Vacancy> getVacanciesRequiredSkillsNotLowerRequiredLevel(Set<Skill> skills) {
+        Set<Vacancy> vacancies = new HashSet<>();
+        SortedSet<Skill> subSkillsEmployee = new TreeSet<>(Skill::compare);
+        Set<Skill> tempSkillsVacancy = new HashSet<>();
+
+        for (Skill skill : skills) {
+            subSkillsEmployee.addAll(allSkills.subSet(new Skill(skill.getName(), 0), skill));
+        }
+        subSkillsEmployee.addAll(skills);
+
+        for (Skill skill : subSkillsEmployee) {
+            vacancies.addAll(vacancyBySkillName.get(skill.getName()));
+        }
+
+        for (Vacancy vacancy : vacancies) {
+            tempSkillsVacancy.clear();
+            for (Requirement requirement : vacancy.getRequirement()) {
+                if (requirement.getRequired() == true) {
+                    tempSkillsVacancy.add(new Skill(requirement.getName(), requirement.getLevel()));
+                }
+            }
+            if (!subSkillsEmployee.containsAll(tempSkillsVacancy)) {
+                vacancies.remove(vacancy);
+            }
+        }
+
+        return vacancies;
+    }
+
+    //--список всех вакансий работодателей, для которых его набор умений соответствует требованиям работодателя на любом уровне
+    public Set<Vacancy> getVacanciesAnyoneSkillsAnyLevel(Set<Skill> skills) {
+        Set<Skill> newSkills = new HashSet<>();
+        for (Skill skill : skills) {
+            newSkills.add(new Skill(skill.getName(), 5));
+        }
+        return getVacanciesSkillsAtRequirementLevel(newSkills);
+    }
+
+    // В этом случае список выдается отсортированным по числу найденных умений, то есть в начале списка приводятся те вакансии работодателей, для которых работник имеет большее число умений.
+    public TreeMultimap<Integer, Vacancy> getVacanciesSortedByNumberOfSkills(Set<Skill> skills) {
+        TreeMultimap<Integer, Vacancy> vacancySort = TreeMultimap.create(Integer::compareTo, Vacancy::compareTo);
+        Set<Vacancy> vacancies = new HashSet<>();
+        SortedSet<Skill> subSkillsEmployee = new TreeSet<>(Skill::compare);
+        Set<Skill> tempSkillsVacancy = new HashSet<>();
+        List<Vacancy> sortedVacancyes = new ArrayList<>();
+
+        for (Skill skill : skills) {
+            subSkillsEmployee.addAll(allSkills.subSet(new Skill(skill.getName(), 0), skill));
+        }
+        subSkillsEmployee.addAll(skills);
+
+        for (Skill skill : subSkillsEmployee) {
+            vacancies.addAll(vacancyBySkillName.get(skill.getName()));
+        }
+
+        int countSkills = 0;
+        for (Vacancy vacancy : vacancies) {
+            tempSkillsVacancy.clear();
+            for (Requirement requirement : vacancy.getRequirement()) {
+                if (subSkillsEmployee.contains(new Skill(requirement.getName(), requirement.getLevel()))){
+                    countSkills++;
+                };
+            }
+            if (countSkills > 0){
+                vacancySort.put(countSkills, vacancy);
+            }
+            countSkills = 0;
+        }
+
+        return vacancySort;
+    }
+
+
+}package net.thumbtack.school.hiring.daoimpl;
+
+import net.thumbtack.school.hiring.ServerException;
+import net.thumbtack.school.hiring.dao.EmployerDao;
+import net.thumbtack.school.hiring.database.Database;
+import net.thumbtack.school.hiring.dto.RequirementDto;
+import net.thumbtack.school.hiring.model.*;
+
+import javax.xml.crypto.Data;
+import java.util.List;
+import java.util.Set;
+
+public class EmployerDaoImpl implements EmployerDao {
+    @Override
+    public String insert(Employer employer, String token) throws ServerException {
+        return Database.getDatabase().insertUser((User)employer, token);
+    }
+
+    @Override
+    public Employer changeDataEmployer(Employer employer) {
+        return Database.getDatabase().changeDataEmployer(employer);
+    }
+
+    @Override
+    public Employer getEmployerByToken(String token) throws ServerException {
+        return Database.getDatabase().getEmployerByToken(token);
+    }
+
+    @Override
+    public List<Vacancy> addVacancy(String token, Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().addVacancy(token, vacancy);
+    }
+
+    @Override
+    public List<Vacancy> delVacancy(String token, Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().delVacancy(token, vacancy);
+    }
+
+    @Override
+    public Vacancy addVacancySkill(Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().addSkillVacancy(vacancy);
+    }
+
+    @Override
+    public Vacancy removeVacancySkill(Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().delSkillVacancy(vacancy);
+    }
+
+    @Override
+    public Vacancy changeVacancySkill(Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().changeSkillVacancy(vacancy);
+    }
+
+    @Override
+    public Set<Employee> getEmployeesSkillsAtRequirementLevel(Set<Requirement> requirements) {
+        return Database.getDatabase().getEmployeesSkillsAtRequirementLevel(requirements);
+    }
+
+    @Override
+    public Set<Employee> getEmployeesRequiredSkillsNotLowerRequiredLevel(Set<Requirement> requirements) {
+        return Database.getDatabase().getEmployeesRequiredSkillsNotLowerRequiredLevel(requirements);
+    }
+
+    @Override
+    public Set<Employee> getEmployeesAnyoneSkillsAnyLevel(Set<Skill> skills) {
+        return Database.getDatabase().getEmployeesAnyoneSkillsAnyLevel(skills);
+    }
+
+    @Override
+    public Set<Employee> getEmployeesOneSkillPerLevelRequirement(Set<Skill> skills) {
+        return Database.getDatabase().getEmployeesOneSkillPerLevelRequirement(skills);
+    }
+
+    @Override
+    public Boolean setVacancyNonActive(String token, Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().setVacancyActive(token, vacancy);
+    }
+
+    @Override
+    public Boolean setVacancyActive(String token, Vacancy vacancy) throws ServerException {
+        return Database.getDatabase().setVacancyNonActive(token, vacancy);
+    }
+
+    @Override
+    public Boolean acceptEmployeeToJob(String login) throws ServerException {
+        return Database.getDatabase().acceptEmployeeToJob(login);
+    }
+
+
+//
+//    @Override
+//    public String addVacancy(String token, vacancy vacancy) {
+//        Database.getDatabase().addVacancy(token, vacancy.getVacancyName(), vacancy.getSalary(), vacancy.getSkillsLevel(), vacancy.getSkillsRequired());
+//        return null;
+//    }
+//
+//    @Override
+//    public String setVacancyActive(String token, String vacancyName) {
+//        Database.getDatabase().setVacancyActive(token, vacancyName);
+//        return null;
+//    }
+//
+//    @Override
+//    public String setVacancyNonActive(String token, String vacancyName) {
+//        Database.getDatabase().setVacancyNonActive(token, vacancyName);
+//        return null;
+//    }
+//
+//    @Override
+//    public String delVacancy(String token, String vacancyName) {
+//        Database.getDatabase().delVacancy(token, vacancyName);
+//        return null;
+//    }
+//
+//    @Override
+//    public ArrayList<String> getVacancyActive(String token) {
+//        return Database.getDatabase().getVacancyActive(token);
+//    }
+//
+//    @Override
+//    public ArrayList<String> getVacancyNonActive(String token) {
+//        return Database.getDatabase().getVacancyNonActive(token);
+//    }
+//
+//    @Override
+//    public ArrayList<String> getVacancyAll(String token) {
+//        return Database.getDatabase().getVacancyAll(token);
+//    }
+
+//    @Override
+//    public String addVacancySkill(String token, String vacancyName, Map<String, Integer> skillsLevel, Map<String, Boolean> skillsRequired) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String removeVacancySkill(String token, String vacancyName, Map<String, Integer> skillsLevel, Map<String, Boolean> skillsRequired) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String changeVacancySkill(String token, String vacancyName, Map<String, Integer> skillsLevel, Map<String, Boolean> skillsRequired) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String acceptEmployeeToJob(String token, String employeeLogin, String vacancyName) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String getEmployeesSkillsAtRequirementLevel(vacancy vacancy) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String getEmployeesRequiredSkillsNotLowerRequiredLevel(vacancy vacancy) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String getEmployeesAnyoneSkillsAnyLevel(vacancy vacancy) {
+//        return null;
+//    }
+//
+//    @Override
+//    public String getEmployeesOneSkillPerLevelRequirement(vacancy vacancy) {
+//        return null;
+//    }
+}
+package net.thumbtack.school.base;
+
+import javax.xml.stream.events.Characters;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.StringJoiner;
+
+public class StringOperations {
+
+    public static int getSummaryLength(String[] strings) {
+        //Возвращает суммарную длину строк, заданных массивом strings.
+        int result = 0;
+        for (int i = 0; i < strings.length; i++){
+            result += strings[i].length();
+        }
+        return result;
+    }
+
+    public static String getFirstAndLastLetterString(String string) {
+        //Возвращает двухсимвольную строку, состоящую из начального и конечного символов заданной строки.
+        return new String(concat(Character.toString(string.charAt(0)), Character.toString(string.charAt(string.length() - 1))));
+    }
+
+    public static boolean isSameCharAtPosition(String string1, String string2, int index) {
+        //Возвращает true, если обе строки в позиции index содержат один и тот же символ, иначе false.
+        return string1.charAt(index) == string2.charAt(index);
+    }
+
+    public static boolean isSameFirstCharPosition(String string1, String string2, char character) {
+        //Возвращает true, если в обеих строках первый встреченный символ character находится в одной и той же позиции.
+        //Просмотр строк ведется от начала.
+        return string1.indexOf(character) == string2.indexOf(character);
+    }
+
+    public static boolean isSameLastCharPosition(String string1, String string2, char character) {
+        //Возвращает true, если в обеих строках первый встреченный символ character находится в одной и той же позиции.
+        //Просмотр строк ведется от конца.
+        return string1.lastIndexOf(character) == string2.lastIndexOf(character);
+    }
+
+    public static boolean isSameFirstStringPosition(String string1, String string2, String str) {
+        //Возвращает true, если в обеих строках первая встреченная подстрока str начинается в одной и той же позиции.
+        //Просмотр строк ведется от начала.
+        return string1.indexOf(str) == string2.indexOf(str);
+    }
+
+    public static boolean isSameLastStringPosition(String string1, String string2, String str) {
+        //Возвращает true, если в обеих строках первая встреченная подстрока str начинается в одной и той же позиции.
+        //Просмотр строк ведется от конца.
+        return string1.lastIndexOf(str) == string2.lastIndexOf(str);
+    }
+
+    public static boolean isEqual(String string1, String string2) {
+        //Возвращает true, если строки равны.
+        return string1.equals(string2);
+    }
+
+    public static boolean isEqualIgnoreCase(String string1, String string2) {
+        //Возвращает true, если строки равны без учета регистра(например, строки “abc” и “aBC” в этом смысле равны).
+        return string1.equalsIgnoreCase(string2);
+    }
+
+    public static boolean isLess(String string1, String string2) {
+        //Возвращает true, если строка string1 меньше строки string2.
+        return string1.compareTo(string2) < 0;
+    }
+
+    public static boolean isLessIgnoreCase(String string1, String string2) {
+        //Возвращает true, если строка string1 меньше строки string2 без учета регистра (например, строка “abc”
+        //меньше строки “ABCd”в этом смысле).
+        return string1.compareToIgnoreCase(string2) < 0;
+    }
+
+    public static String concat(String string1, String string2) {
+        //Возвращает строку, полученную путем сцепления двух строк.
+        return string1 + string2;
+    }
+
+    public static boolean isSamePrefix(String string1, String string2, String prefix) {
+        //Возвращает true, если обе строки string1 и string2 начинаются с одной и той же подстроки prefix.
+        return string1.startsWith(prefix) && string2.startsWith(prefix);
+    }
+
+    public static boolean isSameSuffix(String string1, String string2, String suffix) {
+        //Возвращает true, если обе строки string1 и string2 заканчиваются одной и той же подстрокой suffix.
+        return string1.endsWith(suffix) && string2.endsWith(suffix);
+    }
+
+    public static String getCommonPrefix(String string1, String string2) {
+        //Возвращает самое длинное общее “начало”двух строк.Если у строк нет общего начала, возвращает пустую строку.
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(string1.length(), string2.length()); i++){
+            if (string1.charAt(i) == string2.charAt(i)){
+                sb.append(string1.charAt(i));
+            }
+            else break;
+        }
+        return  sb.toString();
+    }
+
+    public static String reverse(String string) {
+        //Возвращает перевернутую строку.
+        return new StringBuilder(string).reverse().toString();
+    }
+
+    public static boolean isPalindrome(String string) {
+        //Возвращает true, если строка является палиндромом, то есть читается слева направо так же, как и справа налево.
+        return string.equals((new StringBuilder(string)).reverse().toString());
+    }
+
+    public static boolean isPalindromeIgnoreCase(String string) {
+        //Возвращает true, если строка является палиндромом, то есть читается слева направо так же, как и справа
+        //налево, без учета регистра.
+        return isPalindrome(string.toLowerCase());
+    }
+
+    public static String getLongestPalindromeIgnoreCase(String[] strings) {
+        //Возвращает самый длинный палиндром (без учета регистра)из массива заданных строк.Если в массиве не
+        // палиндромов, возвращает пустую строку.
+       String resultPol = "";
+        for (int i = 0; i < strings.length; i++) {
+            if (isPalindromeIgnoreCase(strings[i])) {
+                if (strings[i].length() > resultPol.length()) {
+                    resultPol = strings[i];
+                }
+            }
+        }
+        return  resultPol;
+    }
+
+    public static boolean hasSameSubstring(String string1, String string2, int index, int length) {
+        //Возвращает true, если обе строки содержат один и тот же фрагмент длиной length, начиная с позиции index.
+        if(string1.length() >= (index + length) && string2.length() >= (index + length)) {
+            return (string1.substring(index, index + length).equals(string2.substring(index, index + length)));
+        }
+        return false;
+    }
+
+    public static boolean isEqualAfterReplaceCharacters(String string1, char replaceInStr1, char replaceByInStr1, String string2, char replaceInStr2, char replaceByInStr2) {
+        //Возвращает true, если после замены в string1 всех вхождений replaceInStr1 на replaceByInStr1 и замены в
+        return isEqual(string1.replace(replaceInStr1, replaceByInStr1), string2.replace(replaceInStr2, replaceByInStr2));
+    }
+
+    public static boolean isEqualAfterReplaceStrings(String string1, String replaceInStr1, String replaceByInStr1, String string2, String replaceInStr2, String replaceByInStr2) {
+        //Возвращает true, если после замены в string1 всех вхождений строки replceInStr1 на replaceByInStr1 и замены
+        //в string2 всех вхождений replceInStr2 на replaceByInStr2 полученные строки равны.
+        return isEqual(string1.replaceAll(replaceInStr1, replaceByInStr1), string2.replaceAll(replaceInStr2, replaceByInStr2));
+    }
+
+    public static boolean isPalindromeAfterRemovingSpacesIgnoreCase(String string) {
+        //Возвращает true, если строка после выбрасывания из нее всех пробелов является палиндромом, без учета регистра.
+        return isPalindromeIgnoreCase(string.replace(" ", ""));
+    }
+
+    public static boolean isEqualAfterTrimming(String string1, String string2) {
+        //Возвращает true, если две строки равны, если не принимать во внимание все пробелы в начале и конце каждой строки.
+        return isEqual(string1.trim(), string2.trim());
+    }
+
+    public static String makeCsvStringFromInts(int[] array) {
+        //Для заданного массива целых чисел создает текстовую строку, в которой числа разделены знаком “запятая”
+        //(т.н.формат CSV - comma separated values).Для пустого массива возвращается пустая строка.
+        StringJoiner tempResult = new StringJoiner(",");
+        if(array.length != 0) {
+            for (int i = 0; i < array.length; i++) {
+                tempResult.add(Integer.toString(array[i]));
+            }
+            return tempResult.toString();
+        }
+        else return "";
+    }
+
+    public static String makeCsvStringFromDoubles(double[] array) {
+        //Для заданного массива вещественных чисел создает текстовую строку, в которой числа разделены знаком “запятая”,
+        //причем каждое число записывается с двумя знаками после точки.Для пустого массива возвращается пустая строка.
+        StringBuilder sb = new StringBuilder();
+        if(array.length != 0){
+            for (int i = 0; i < array.length; i++){
+                sb.append(new DecimalFormat("#0.00").format(array[i])).append(",");
+            }
+            sb.deleteCharAt(sb.length() - 1);
+            return sb.toString();
+        } else return "";
+    }
+
+    public static StringBuilder makeCsvStringBuilderFromInts(int[] array) {
+        //То же, что и в упражнении 25, но возвращает StringBuilder.
+        return  new StringBuilder().append(makeCsvStringFromInts(array));
+    }
+
+    public static StringBuilder makeCsvStringBuilderFromDoubles(double[] array) {
+        return new StringBuilder().append(makeCsvStringFromDoubles(array));
+    }
+
+    public static StringBuilder removeCharacters(String string, int[] positions) {
+        //Удаляет из строки символы, номера которых заданы в массиве positions.Предполагается, что будут передаваться
+        //только допустимые номера, упорядоченные по возрастанию.Номера позиций для удаления указаны для исходной строки.
+        //Возвращает полученный в результате StringBuilder.
+        StringBuilder sb = new StringBuilder(string);
+        for (int i = 0; i < positions.length; i++) {
+            sb.deleteCharAt(sb.toString().indexOf(string.charAt(positions[i])));
+        }
+        return sb;
+    }
+
+    public static StringBuilder insertCharacters(String string, int[] positions, char[] characters) {
+        //Вставляет в строку символы.Массивы positions и characters имеют одинаковую длину.В позицию positions[i]
+        //в исходной строке string вставляется символ characters[i].Если в массиве positions один и тот же номер
+        //позиции повторяется несколько раз, это значит, что в указанную позицию вставляется несколько символов, в
+        //том порядке, в котором они перечислены в массиве characters.Предполагается, что будут передаваться
+        //только допустимые номера, упорядоченные по неубыванию.Возвращает полученный в результате StringBuilder.
+        StringBuilder sb = new StringBuilder(string);
+        int deltaPos = 0;
+        for (int i = 0; i < positions.length; i++) {
+            sb.insert(positions[i]+deltaPos, characters[i]);
+            deltaPos++;
+        }
+        return sb;
+    }
+}
+package net.thumbtack.school.database.model;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+
+public class School {
+
+    private String name;
+    private int year;
+    private List<Group> groups;
+    private int id; //id для School. Для несохраненной в БД School это поле имеет значение 0, после сохранения  значение присваивается БД
+
+
+    public School() { // Конструктор без параметров с пустым телом. На этом занятии он нам не понадобится, но будет нужен на следующем занятии, поэтому лучше его сразу сделать.
+
+    }
+
+    public School(int id, String name, int year, List<Group> groups) { //Конструктор, устанавливающий значения всех полей
+        this.groups = groups;
+        setName(name);
+        setYear(year);
+        setId(id);
+    }
+
+    public School(int id, String name, int year) { //Конструктор, устанавливающий значения всех полей. Полю - списку присваивается пустой список (не null!)
+        this(id, name, year, new ArrayList<>());
+    }
+
+    public School(String name, int year) { //Конструктор, устанавливающий значения всех полей. Полю id присваивается значение 0,  полю - списку - пустой список (не null!)
+        this(0, name, year, new ArrayList<>());
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setGroups(List<Group> groups) {
+        this.groups = groups;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getYear() {
+        return year;
+    }
+
+    public void setYear(int year) {
+        this.year = year;
+    }
+
+    public List<Group> getGroups() {
+        return groups;
+    }
+
+    public static int compare() {
+        return 0;
+    }
+
+    public void addGroup(Group group) {
+        groups.add(group);
+    }
+
+    public void removeGroup(Group group) {
+        groups.remove(group);
+    }
+
+    public void removeGroup(String name) {
+        for (Group pGroup : groups) {
+            if (pGroup.getName().equals(name)) {
+                groups.remove(pGroup);
+                return;
+            }
+        }
+    }
+
+    public boolean containsGroup(Group group) {
+        return groups.contains(group);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof School)) return false;
+        School school = (School) o;
+        return getYear() == school.getYear() &&
+                getId() == school.getId() &&
+                Objects.equals(getName(), school.getName()) &&
+                Objects.equals(getGroups(), school.getGroups());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), getYear(), getGroups(), getId());
+    }
+}
+package net.thumbtack.school.database.model;
+
+import java.util.*;
+
+public class Group {
+    private String name;
+    private String room;
+    private int id;
+    private List<Subject> subjects;
+    private List<Trainee> trainees;
+    private int school_id;
+
+
+    public Group() {
+    }
+
+    public Group(int id, String name, String room, List<Trainee> trainees, List<Subject> subjects) { //Конструктор, устанавливающий значения всех полей
+        setName(name);
+        setRoom(room);
+        setId(id);
+        setTrainees(trainees);
+        setSubjects(subjects);
+        setSchoolId(0);
+    }
+
+    public Group(int id, String name, String room) { //Конструктор, устанавливающий значения всех полей. Полям - спискам присваивается пустой список (не null!)
+        this(id, name, room, new ArrayList<>(), new ArrayList<>());
+    }
+
+    public Group(String name, String room) { //Конструктор, устанавливающий значения всех полей. Полю id присваивается значение 0,  полям - спискам - пустые списки (не null!)
+        this(0, name, room, new ArrayList<>(), new ArrayList<>());
+    }
+
+    public void addSubject(Subject subject) { //Добавляет Subject в Group
+        subjects.add(subject);
+    }
+
+    public void removeSubject(Subject subject) { //Удаляет Subject из Group
+        subjects.remove(subject);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getRoom() {
+        return room;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public void setRoom(String room) {
+        this.room = room;
+    }
+
+    public List<Trainee> getTrainees() {
+        return trainees;
+    }
+
+    public void addTrainee(Trainee trainee) {
+        trainees.add(trainee);
+    }
+
+    public void removeTrainee(Trainee trainee) {
+        trainees.remove(trainee);
+    }
+
+    public void removeTrainee(int index) {
+        trainees.remove(index);
+    }
+
+    public int getSchool_id() {
+        return school_id;
+    }
+
+    public void setSchool_id(int school_id) {
+        this.school_id = school_id;
+    }
+
+    public Trainee getTraineeByFirstName(String firstName) {
+        for (Trainee trainee : trainees) {
+            if (trainee.getFirstName().equals(firstName)) {
+                return trainee;
+            }
+        }
+        return null;
+    }
+
+    public Trainee getTraineeByFullName(String fullName) {
+        for (Trainee trainee : trainees) {
+            if (trainee.getFullName().equals(fullName)) {
+                return trainee;
+            }
+        }
+        return null;
+    }
+
+    public void sortTraineeListByFirstNameAscendant() {
+        //Сортирует список Trainee группы, упорядочивая его по возрастанию имени Trainee.
+        trainees.sort(Comparator.comparing(Trainee::getFirstName));
+    }
+
+    public void sortTraineeListByRatingDescendant() {
+        //Сортирует список Trainee группы, упорядочивая его по убыванию оценки Trainee.
+        trainees.sort(Comparator.comparingInt(Trainee::getRating));
+        reverseTraineeList();
+    }
+
+    public void reverseTraineeList() {
+        Collections.reverse(trainees);
+    }
+
+    public void rotateTraineeList(int positions) {
+        //Циклически сдвигает список Trainee группы на указанное число позиций. Для положительного значения positions сдвигает вправо, для отрицательного - влево на модуль значения positions.
+        Collections.rotate(trainees, positions);
+    }
+
+    public List<Trainee> getTraineesWithMaxRating() {
+        //Возвращает список тех Trainee группы , которые имеют наивысшую оценку.
+        // Иными словами, если в группе есть Trainee с оценкой 5, возвращает список получивших оценку 5, если же таких нет, но есть Trainee с оценкой 4,
+        // возвращает список получивших оценку 4 и т.д. Для пустого списка выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        List<Trainee> topRating = new ArrayList<Trainee>();
+        int maxRate;
+        sortTraineeListByRatingDescendant();
+        maxRate = trainees.get(0).getRating();
+        ListIterator<Trainee> tranieIterator = trainees.listIterator();
+        Trainee tempTrainee;
+        while (tranieIterator.hasNext()) {
+            tempTrainee = tranieIterator.next();
+            if (tempTrainee.getRating() == maxRate) {
+                topRating.add(tempTrainee);
+            }
+        }
+        return topRating;
+    }
+
+    public void setTrainees(List<Trainee> trainees) {
+        this.trainees = trainees;
+    }
+
+    public List<Subject> getSubjects() {
+        return subjects;
+    }
+
+    public void setSubjects(List<Subject> subjects) {
+        this.subjects = subjects;
+    }
+
+    public int getSchoolId() {
+        return school_id;
+    }
+
+    public void setSchoolId(int schoolId) {
+        this.school_id = schoolId;
+    }
+
+    public boolean hasDuplicates() {
+        //Проверяет, есть ли в группе хотя бы одна пара Trainee, для которых совпадают имя, фамилия и оценка.
+        for (int i = 0; i < trainees.size(); i++) {
+            for (int j = i; j < trainees.size(); j++) {
+                if (i != j) {
+                    if (trainees.get(i).equals(trainees.get(j))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Group)) return false;
+        Group group = (Group) o;
+        return getId() == group.getId() &&
+                getSchool_id() == group.getSchool_id() &&
+                Objects.equals(getName(), group.getName()) &&
+                Objects.equals(getRoom(), group.getRoom()) &&
+                Objects.equals(getSubjects(), group.getSubjects()) &&
+                Objects.equals(getTrainees(), group.getTrainees());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), getRoom(), getId(), getSubjects(), getTrainees(), getSchool_id());
+    }
+}
+package net.thumbtack.school.database.jdbc;
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import net.thumbtack.school.database.model.Subject;
+import net.thumbtack.school.database.model.Trainee;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class JdbcService {
+    private static Connection connection;
+    private static Statement statement;
+    private static ResultSet resultSet;
+
+    public static void insertTrainee(Trainee trainee) throws SQLException {
+        String insertQuery = "insert into trainee values(?, ?, ?, ?, ?)";
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(insertQuery, PreparedStatement.RETURN_GENERATED_KEYS)) {
+            prepareStatement.setNull(1, Types.INTEGER);
+            prepareStatement.setString(2, trainee.getFirstName());
+            prepareStatement.setString(3, trainee.getLastName());
+            prepareStatement.setInt(4, trainee.getRating());
+            prepareStatement.setNull(5, Types.INTEGER);
+            prepareStatement.executeUpdate();
+            try (ResultSet generatedKeys = prepareStatement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    trainee.setId(generatedKeys.getInt(1));
+                }
+            }
+        }
+    }
+
+    public static void updateTrainee(Trainee trainee) throws SQLException {
+        String updateQuery = "update trainee set firstname = ?, lastname = ?, rating = ? where id = ?";
+        try (PreparedStatement prepareStatement = connection.prepareStatement(updateQuery)) {
+            prepareStatement.setString(1, trainee.getFirstName());
+            prepareStatement.setString(2, trainee.getLastName());
+            prepareStatement.setInt(3, trainee.getRating());
+            prepareStatement.setInt(4, trainee.getId());
+            prepareStatement.executeUpdate();
+        }
+    }
+
+    public static Trainee getTraineeByIdUsingColNames(int traineeId) throws SQLException {
+        String selectQuery = "select * from trainee where id = " + traineeId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String firstName = resultSet.getString("firstname");
+                String lastName = resultSet.getString("lastname");
+                int rating = resultSet.getInt("rating");
+                return new Trainee(id, firstName, lastName, rating);
+            }
+            return null;
+        }
+    }
+
+    public static Trainee getTraineeByIdUsingColNumbers(int traineeId) throws SQLException {
+        String selectQuery = "select * from trainee where id = " + traineeId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt(1);
+                String firstName = resultSet.getString(2);
+                String lastName = resultSet.getString(3);
+                int rating = resultSet.getInt(4);
+                return new Trainee(id, firstName, lastName, rating);
+            }
+            return null;
+        }
+    }
+
+    public static List<Trainee> getTraineesUsingColNames() throws SQLException {
+        List<Trainee> trainees = new ArrayList<>();
+        String selectQuery = "SELECT * FROM ttschool.trainee";
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            while (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String firstName = resultSet.getString("firstname");
+                String lastName = resultSet.getString("lastname");
+                int rating = resultSet.getInt("rating");
+                trainees.add(new Trainee(id, firstName, lastName, rating));
+            }
+            return trainees;
+        }
+    }
+
+    public static List<Trainee> getTraineesUsingColNumbers() throws SQLException {
+        List<Trainee> trainees = new ArrayList<>();
+        String selectQuery = "SELECT * FROM ttschool.trainee";
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            while (resultSet.next()) {
+                int id = resultSet.getInt(1);
+                String firstName = resultSet.getString(2);
+                String lastName = resultSet.getString(3);
+                int rating = resultSet.getInt(4);
+                trainees.add(new Trainee(id, firstName, lastName, rating));
+            }
+            return trainees;
+        }
+    }
+
+    public static void deleteTrainee(Trainee trainee) throws SQLException {
+        String selectQuery = "delete from trainee where id =  ?";
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            prepareStatement.setInt(1, trainee.getId());
+            prepareStatement.executeUpdate();
+        }
+    }
+
+    public static void deleteTrainees() throws SQLException {
+        String delQuery = "DELETE FROM ttschool.trainee";
+        connection = new JdbcUtils().getConnection();
+        statement = connection.createStatement();
+        try (PreparedStatement prepareStatement = connection.prepareStatement(delQuery)) {
+            prepareStatement.executeUpdate();
+        }
+    }
+
+    public static void insertSubject(Subject subject) throws SQLException {
+        String insertQuery = "insert into subject values(?, ?)";
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(insertQuery, PreparedStatement.RETURN_GENERATED_KEYS)) {
+            prepareStatement.setNull(1, Types.INTEGER);
+            prepareStatement.setString(2, subject.getName());
+            prepareStatement.executeUpdate();
+            try (ResultSet generatedKeys = prepareStatement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    subject.setId(generatedKeys.getInt(1));
+                }
+            }
+        }
+    }
+
+    public static Subject getSubjectByIdUsingColNames(int subjectId) throws SQLException {
+        String selectQuery = "select * from subject where id = " + subjectId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String name = resultSet.getString("name");
+                return new Subject(id, name);
+            }
+            return null;
+        }
+    }
+
+    public static Subject getSubjectByIdUsingColNumbers(int subjectId) throws SQLException {
+        String selectQuery = "select * from subject where id = " + subjectId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt(1);
+                String name = resultSet.getString(2);
+                return new Subject(id, name);
+            }
+            return null;
+        }
+    }
+
+    public static void deleteSubjects() throws SQLException {
+        //Удаляет все Subject из базы данных.
+        String selectQuery = "DELETE FROM ttschool.subject";
+        connection = new JdbcUtils().getConnection();
+        statement = connection.createStatement();
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            prepareStatement.executeUpdate();
+        }
+    }
+
+    public static void insertSchool(School school) throws SQLException {
+        String insertQuery = "insert into school values(?, ?, ?)";
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(insertQuery, PreparedStatement.RETURN_GENERATED_KEYS)) {
+            prepareStatement.setNull(1, Types.INTEGER);
+            prepareStatement.setString(2, school.getName());
+            prepareStatement.setInt(3, school.getYear());
+            prepareStatement.executeUpdate();
+            try (ResultSet generatedKeys = prepareStatement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    school.setId(generatedKeys.getInt(1));
+                }
+            }
+        }
+    }
+
+    public static School getSchoolByIdUsingColNames(int schoolId) throws SQLException {
+        String selectQuery = "select * from school where id = " + schoolId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String name = resultSet.getString("name");
+                int year = resultSet.getInt("year");
+                return new School(id, name, year);
+            }
+            return null;
+        }
+    }
+
+    public static School getSchoolByIdUsingColNumbers(int schoolId) throws SQLException {
+        String selectQuery = "select * from school where id = " + schoolId;
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            if (resultSet.next()) {
+                int id = resultSet.getInt(1);
+                String name = resultSet.getString(2);
+                int year = resultSet.getInt(3);
+                return new School(id, name, year);
+            }
+            return null;
+        }
+    }
+
+    public static void deleteSchools() throws SQLException {
+        //Удаляет все School из базы данных. Если список Group в School не пуст, удаляет все Group для каждой School.
+        String selectQuery = "DELETE FROM ttschool.school";
+        connection = new JdbcUtils().getConnection();
+        statement = connection.createStatement();
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            prepareStatement.executeUpdate();
+        }
+        selectQuery = "DELETE FROM ttschool.`group`";
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            prepareStatement.executeUpdate();
+        }
+    }
+
+    public static void insertGroup(School school, Group group) throws SQLException {
+        //Добавляет Group в базу данных, устанавливая ее принадлежность к школе School.
+        String insertQuery = "insert into ttschool.`group` values(?, ?, ?, ?)";
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(insertQuery, PreparedStatement.RETURN_GENERATED_KEYS)) {
+            prepareStatement.setNull(1, Types.INTEGER);
+            prepareStatement.setString(2, group.getName());
+            prepareStatement.setString(3, group.getRoom());
+            prepareStatement.setInt(4, school.getId());
+            prepareStatement.executeUpdate();
+            try (ResultSet generatedKeys = prepareStatement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    group.setId(generatedKeys.getInt(1));
+                }
+            }
+        }
+    }
+
+    public static School getSchoolByIdWithGroups(int id) throws SQLException {
+        //Получает School по ее ID вместе со всеми ее Group из базы данных. Если School с таким ID нет, возвращает null. Метод получения (по именам или номерам полей) - на Ваше усмотрение.
+        School school = new School(0, null, 0);
+        String selectQuery = "SELECT ttschool.`school`.*, ttschool.`group`.* FROM school INNER JOIN ttschool.`group` where school_id = " + id;
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            while (resultSet.next()) {
+                if (school.getId() != id) {
+                    school.setId(resultSet.getInt(1));
+                    school.setName(resultSet.getString(2));
+                    school.setYear(resultSet.getInt(3));
+                }
+                school.addGroup(new Group(resultSet.getInt(4), resultSet.getString(5), resultSet.getString(6)));
+            }
+            return school;
+        }
+    }
+
+    public static List<School> getSchoolsWithGroups() throws SQLException {
+        //Получает список всех School вместе со всеми их Group из базы данных. Если ни одной  School в БД нет,  возвращает пустой список. Метод получения (по именам или номерам полей) - на Ваше усмотрение.
+        List<School> schools = new ArrayList<>();
+        Map<Integer, School> schoolById = new HashMap<>();
+        School school;
+        String selectQuery = "SELECT ttschool.`school`.*, ttschool.`group`.* FROM school INNER JOIN ttschool.`group`";
+
+        try (PreparedStatement prepareStatement = connection.prepareStatement(selectQuery)) {
+            resultSet = prepareStatement.executeQuery();
+            while (resultSet.next()) {
+                if (schoolById.get(resultSet.getInt(1)) == null) {
+                    school = new School(resultSet.getInt(1), resultSet.getString(2), resultSet.getInt(3));
+                    schoolById.put(resultSet.getInt(1), school);
+                }
+                if (resultSet.getInt(1) == resultSet.getInt(7)) {
+                    schoolById.get(resultSet.getInt(1)).addGroup(new Group(resultSet.getInt(4), resultSet.getString(5), resultSet.getString(6)));
+                }
+            }
+        }
+        schools.addAll(schoolById.values());
+        return schools;
+    }
+
+}
+package net.thumbtack.school.ttschool;
+
+import java.util.*;
+
+public class Group {
+
+    //В этом классе должны быть поля “название группы” (текстовая строка) , название аудитории (текстовая строка, предполагается, что аудитория закреплена за группой постоянно)
+    // и список студентов типа List<Trainee>. Название группы и номер аудитории не могут быть null или пустой строкой.
+
+    private String name;
+    private String room;
+    private List<Trainee> traineeList;
+
+    public Group(String name, String room) throws TrainingException {
+        //Создает Group с указанными значениями полей и пустым списком студентов. Для недопустимых значений входных параметров выбрасывает TrainingException с соответствующим TrainingErrorCode
+        setName(name);
+        setRoom(room);
+        traineeList = new ArrayList<>();
+    }
+
+    public String getName() {
+        //Возвращает имя группы
+        return name;
+    }
+
+    public void setName(String name) throws TrainingException {
+        //Устанавливает имя группы. Для недопустимого значения входного параметра выбрасывает TrainingException с TrainingErrorCode.GROUP_WRONG_NAME
+        // (здесь и далее добавляйте новые коды ошибок в TrainingErrorCode)
+        chekName(name);
+        this.name = name;
+    }
+
+    public String getRoom() {
+        //Возвращает название  аудитории
+        return room;
+    }
+
+    public void setRoom(String room) throws TrainingException {
+        //Устанавливает название  аудитории. Для недопустимого значения входного параметра выбрасывает TrainingException с TrainingErrorCode.GROUP_WRONG_ROOM
+        chekRoom(room);
+        this.room = room;
+    }
+
+    public List<Trainee> getTrainees() {
+        //Возвращает список учащихся.
+        return traineeList;
+    }
+
+    public void addTrainee(Trainee trainee) {
+        //Добавляет Trainee в группу.
+        traineeList.add(trainee);
+    }
+
+    public void removeTrainee(Trainee trainee) throws TrainingException {
+        //Удаляет Trainee из группы. Если такого Trainee в группе нет, выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        if (!traineeList.remove(trainee)) {
+            throw new TrainingException(TrainingErrorCode.TRAINEE_NOT_FOUND);
+        }
+    }
+
+    public void removeTrainee(int index) throws TrainingException {
+        //Удаляет Trainee с данным номером в списке из группы. Если номер не является допустимым, выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        try {
+            traineeList.remove(index);
+        } catch (Exception ex) {
+            throw new TrainingException(TrainingErrorCode.TRAINEE_NOT_FOUND);
+        }
+    }
+
+    public Trainee getTraineeByFirstName(String firstName) throws TrainingException {
+        //Возвращает первый найденный в списке группы Trainee, у которого имя равно firstName.
+        // Если такого Trainee в группе нет, выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        for (Trainee trainee : traineeList) {
+            if (trainee.getFirstName().equals(firstName)) {
+                return trainee;
+            }
+        }
+        throw new TrainingException(TrainingErrorCode.TRAINEE_NOT_FOUND);
+    }
+
+    public Trainee getTraineeByFullName(String fullName) throws TrainingException {
+        //Возвращает первый найденный в списке группы Trainee, у которого полное имя равно fullName.
+        // Если такого Trainee в группе нет, выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        for (Trainee trainee : traineeList) {
+            if (trainee.getFullName().equals(fullName)) {
+                return trainee;
+            }
+        }
+        throw new TrainingException(TrainingErrorCode.TRAINEE_NOT_FOUND);
+    }
+
+    public void sortTraineeListByFirstNameAscendant() {
+        //Сортирует список Trainee группы, упорядочивая его по возрастанию имени Trainee.
+        traineeList.sort(Comparator.comparing(Trainee::getFirstName));
+    }
+
+    public void sortTraineeListByRatingDescendant() {
+        //Сортирует список Trainee группы, упорядочивая его по убыванию оценки Trainee.
+        traineeList.sort(Comparator.comparingInt(Trainee::getRating));
+        reverseTraineeList();
+    }
+
+    public void reverseTraineeList() {
+        //Переворачивает список Trainee группы, то есть последний элемент списка становится начальным, предпоследний - следующим за начальным и т.д..
+        Collections.reverse(traineeList);
+    }
+
+    public void rotateTraineeList(int positions) {
+        //Циклически сдвигает список Trainee группы на указанное число позиций. Для положительного значения positions сдвигает вправо, для отрицательного - влево на модуль значения positions.
+        Collections.rotate(traineeList, positions);
+    }
+
+    public List<Trainee> getTraineesWithMaxRating() throws TrainingException {
+        //Возвращает список тех Trainee группы , которые имеют наивысшую оценку.
+        // Иными словами, если в группе есть Trainee с оценкой 5, возвращает список получивших оценку 5, если же таких нет, но есть Trainee с оценкой 4,
+        // возвращает список получивших оценку 4 и т.д. Для пустого списка выбрасывает TrainingException с TrainingErrorCode.TRAINEE_NOT_FOUND
+        if (traineeList == null || traineeList.size() == 0)
+            throw new TrainingException(TrainingErrorCode.TRAINEE_NOT_FOUND);
+        List<Trainee> topRating = new ArrayList<Trainee>();
+        int maxRate;
+        sortTraineeListByRatingDescendant();
+        maxRate = traineeList.get(0).getRating();
+        ListIterator<Trainee> tranieIterator = traineeList.listIterator();
+        Trainee tempTrainee;
+        while (tranieIterator.hasNext()) {
+            tempTrainee = tranieIterator.next();
+            if(tempTrainee.getRating() == maxRate){
+                topRating.add(tempTrainee);
+            }
+        }
+        return topRating;
+    }
+
+    public boolean hasDuplicates() {
+        //Проверяет, есть ли в группе хотя бы одна пара Trainee, для которых совпадают имя, фамилия и оценка.
+        for (int i = 0; i < traineeList.size(); i++) {
+            for (int j = i; j < traineeList.size(); j++) {
+                if (i != j) {
+                    if (traineeList.get(i).equals(traineeList.get(j))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void chekName(String name) throws TrainingException {
+        if (name == null || name.equals(""))
+            throw new TrainingException(TrainingErrorCode.GROUP_WRONG_NAME);
+    }
+
+    private void chekRoom(String room) throws TrainingException {
+        if (room == null || room.equals("")) throw new TrainingException(TrainingErrorCode.GROUP_WRONG_ROOM);
+    }
+
+    //Методы equals и hashCode
+    //Не пишите эти методы сами, используйте средства IDEA.
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Group group = (Group) o;
+        return Objects.equals(name, group.name) &&
+                Objects.equals(room, group.room) &&
+                Objects.equals(traineeList, group.traineeList);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, room, traineeList);
+    }
+}
+package net.thumbtack.school.database.mybatis;
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import net.thumbtack.school.database.model.Trainee;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+
+public class TestGroupTraineesOperations extends TestBase {
+
+    @Test
+    public void testInsertTraineeAndAddToGroup() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Group groupFrontEnd1018 = insertGroup(school2018, "Frontend2018", 2018);
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        traineeDao.insert(null, traineeIvanov);
+        assertNotEquals(0, traineeIvanov.getId());
+        Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+        groupDao.moveTraineeToGroup(groupFrontEnd1018, traineeIvanov);
+        groupFrontEnd1018.addTrainee(traineeIvanov);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd1018);
+        school2018.setGroups(groups);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+    }
+
+    @Test
+    public void testInsertTraineeAndMoveToAnotherGroup() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Group groupFrontEnd = insertGroup(school2018, "Frontend", 2018);
+        Group groupBackEnd = insertGroup(school2018, "Backend", 2018);
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        traineeDao.insert(groupFrontEnd, traineeIvanov);
+        assertNotEquals(0, traineeIvanov.getId());
+        Trainee traineeeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeeIvanovFromDB);
+
+        List<Group> groups = new ArrayList<>();
+        groupFrontEnd.addTrainee(traineeIvanov);
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+
+        groupDao.moveTraineeToGroup(groupBackEnd, traineeIvanov);
+
+        groups.clear();
+        groupFrontEnd.removeTrainee(traineeIvanov);
+        groupBackEnd.addTrainee(traineeIvanov);
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+
+        schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+
+    }
+
+    @Test
+    public void testRemoveTraineeFromGroup() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Group groupFrontEnd = insertGroup(school2018, "Frontend", 2018);
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        traineeDao.insert(groupFrontEnd, traineeIvanov);
+        assertNotEquals(0, traineeIvanov.getId());
+        Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+
+        List<Group> groups = new ArrayList<>();
+        groupFrontEnd.addTrainee(traineeIvanov);
+        groups.add(groupFrontEnd);
+        school2018.setGroups(groups);
+
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+
+        groupDao.deleteTraineeFromGroup(traineeIvanov);
+
+        groups.clear();
+        groupFrontEnd.removeTrainee(traineeIvanov);
+        groups.add(groupFrontEnd);
+        school2018.setGroups(groups);
+
+        schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+
+    }
+
+}
+package net.thumbtack.school.database.mybatis;
+
+import net.thumbtack.school.database.model.Trainee;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class TestTraineeOperations extends TestBase {
+
+    @Test
+    public void testInsertTrainee() {
+        Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+        Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+    }
+
+    @Test
+    public void testInsertTraineeWithNullFirstName() {
+        assertThrows(RuntimeException.class, () -> {
+            Trainee traineeIvanov = new Trainee(null, "Иванов", 5);
+            traineeDao.insert(null, traineeIvanov);
+        });
+    }
+
+    @Test
+    public void testUpdateTrainee() {
+        Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+        Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+        traineeIvanov.setLastName("Федор");
+        traineeDao.update(traineeIvanov);
+        traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+    }
+
+    @Test
+    public void testUpdateTraineeSetNullLastName() {
+        assertThrows(RuntimeException.class, () -> {
+            Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+            Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+            assertEquals(traineeIvanov, traineeIvanovFromDB);
+            traineeIvanov.setLastName(null);
+            traineeDao.update(traineeIvanov);
+        });
+    }
+
+    @Test
+    public void testDeleteTrainee() {
+        Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+        Trainee traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertEquals(traineeIvanov, traineeIvanovFromDB);
+        traineeDao.delete(traineeIvanov);
+        traineeIvanovFromDB = traineeDao.getById(traineeIvanov.getId());
+        assertNull(traineeIvanovFromDB);
+    }
+
+    @Test
+    public void testInsertTwoTrainees() {
+        Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+        Trainee traineePetrov = insertTrainee("Петр", "Петров", 4);
+        List<Trainee> trainees = new ArrayList<>();
+        trainees.add(traineeIvanov);
+        trainees.add(traineePetrov);
+        List<Trainee> traineesFromDB = traineeDao.getAll();
+        assertEquals(trainees, traineesFromDB);
+    }
+
+    @Test
+    public void testIfCondition() {
+        Trainee traineeIvanov = insertTrainee("Иван", "Иванов", 5);
+        Trainee traineePetrovPetr = insertTrainee("Петр", "Петров", 4);
+        Trainee traineePetrovFedor = insertTrainee("Федор", "Петров", 3);
+        Trainee traineeSidorov = insertTrainee("Петр", "Сидоров", 4);
+        Trainee traineeSidorenko = insertTrainee("Иван", "Сидоренко", 2);
+
+        List<Trainee> traineesFull = new ArrayList<>();
+        traineesFull.add(traineeIvanov);
+        traineesFull.add(traineePetrovPetr);
+        traineesFull.add(traineePetrovFedor);
+        traineesFull.add(traineeSidorov);
+        traineesFull.add(traineeSidorenko);
+
+        List<Trainee> traineesIvan = new ArrayList<>();
+        traineesIvan.add(traineeIvanov);
+        traineesIvan.add(traineeSidorenko);
+
+        List<Trainee> traineesSidor = new ArrayList<>();
+        traineesSidor.add(traineeSidorov);
+        traineesSidor.add(traineeSidorenko);
+
+        List<Trainee> traineesPetrovWithRating4 = new ArrayList<>();
+        traineesPetrovWithRating4.add(traineePetrovPetr);
+
+        List<Trainee> traineesFullFromDB = traineeDao.getAll();
+        traineesFullFromDB.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(traineesFull, traineesFullFromDB);
+
+        List<Trainee> traineesIvanFromDB = traineeDao.getAllWithParams("Иван", null, null);
+        traineesIvanFromDB.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(traineesIvan, traineesIvanFromDB);
+
+        List<Trainee> traineesSidorFromDB = traineeDao.getAllWithParams(null, "Сидор%", null);
+        traineesSidorFromDB.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(traineesSidor, traineesSidorFromDB);
+
+        List<Trainee> traineesPetrovWithRating4FromDB = traineeDao.getAllWithParams(null, "Петров", 4);
+        traineesPetrovWithRating4FromDB.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(traineesPetrovWithRating4, traineesPetrovWithRating4FromDB);
+
+    }
+
+    @Test
+    public void testBatchInsertTrainees() {
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        Trainee traineePetrovPetr = new Trainee("Петр", "Петров", 4);
+        Trainee traineePetrovFedor = new Trainee("Федор", "Петров", 3);
+        Trainee traineeSidorov = new Trainee("Петр", "Сидоров", 4);
+        Trainee traineeSidorenko = new Trainee("Иван", "Сидоренко", 2);
+
+        List<Trainee> traineesFull = new ArrayList<>();
+        traineesFull.add(traineeIvanov);
+        traineesFull.add(traineePetrovPetr);
+        traineesFull.add(traineePetrovFedor);
+        traineesFull.add(traineeSidorov);
+        traineesFull.add(traineeSidorenko);
+        traineeDao.batchInsert(traineesFull);
+        List<Trainee> traineesFullFromDB = traineeDao.getAll();
+        traineesFullFromDB.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(traineesFull, traineesFullFromDB);
+    }
+
+}
+
+
+package net.thumbtack.school.database.mybatis;
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+
+public class TestSchoolGroupsOperations extends TestBase {
+
+    @Test
+    public void testInsertSchoolWithGroups() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        List<Group> groups = insertSchoolGroups(school2018, 2018);
+        school2018.setGroups(groups);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+    }
+
+    @Test
+    public void testUpdateSchoolGroup() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Group groupFrontEnd = insertGroup(school2018, "FrontEnd", 2018);
+        Group groupBackEnd = insertGroup(school2018, "BackEnd", 2018);
+        groupFrontEnd.setRoom("100");
+        groupFrontEnd.setName("web");
+        groupDao.update(groupFrontEnd);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+    }
+
+    @Test
+    public void testInsertGroupWithoutSchool() {
+        assertThrows(RuntimeException.class, () -> {
+            Group group = new Group("frontend2018", "11");
+            groupDao.insert(null, group);
+        });
+    }
+
+
+    @Test
+    public void testInsertGroupBeforeInsertingSchool() {
+        assertThrows(RuntimeException.class, () -> {
+            School school = new School("TTSchool", 2018);
+            Set<Group> groups = new HashSet<>();
+            Group group = new Group("frontend2018", "11");
+            groupDao.insert(school, group);
+        });
+
+    }
+
+}
+package net.thumbtack.school.database.mybatis;
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import net.thumbtack.school.database.model.Subject;
+import net.thumbtack.school.database.model.Trainee;
+import net.thumbtack.school.database.mybatis.dao.GroupDao;
+import net.thumbtack.school.database.mybatis.dao.SchoolDao;
+import net.thumbtack.school.database.mybatis.dao.SubjectDao;
+import net.thumbtack.school.database.mybatis.dao.TraineeDao;
+import net.thumbtack.school.database.mybatis.daoimpl.GroupDaoImpl;
+import net.thumbtack.school.database.mybatis.daoimpl.SchoolDaoImpl;
+import net.thumbtack.school.database.mybatis.daoimpl.SubjectDaoImpl;
+import net.thumbtack.school.database.mybatis.daoimpl.TraineeDaoImpl;
+import net.thumbtack.school.database.mybatis.utils.MyBatisUtils;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+public class TestBase {
+
+    private static boolean setUpIsDone = false;
+    protected SchoolDao schoolDao = new SchoolDaoImpl();
+    protected GroupDao groupDao = new GroupDaoImpl();
+    protected TraineeDao traineeDao = new TraineeDaoImpl();
+    protected SubjectDao subjectDao = new SubjectDaoImpl();
+
+    @BeforeAll()
+    public static void setUp() {
+        if (!setUpIsDone) {
+            boolean initSqlSessionFactory = MyBatisUtils.initSqlSessionFactory();
+            if (!initSqlSessionFactory) {
+                throw new RuntimeException("Can't create connection, stop");
+            }
+            setUpIsDone = true;
+        }
+    }
+
+    @BeforeEach()
+    public void clearDatabase() {
+        traineeDao.deleteAll();
+        schoolDao.deleteAll();
+        subjectDao.deleteAll();
+    }
+
+    protected Trainee insertTrainee(String firstName, String lastName, int rating) {
+        Trainee trainee = new Trainee(firstName, lastName, rating);
+        traineeDao.insert(null, trainee);
+        assertNotEquals(0, trainee.getId());
+        return trainee;
+    }
+
+    protected Subject insertSubject(String name) {
+        Subject subject = new Subject(name);
+        subjectDao.insert(subject);
+        assertNotEquals(0, subject.getId());
+        return subject;
+    }
+
+    protected School insertTTSchool(String name, int year) {
+        School school = new School(name, year);
+        schoolDao.insert(school);
+        assertNotEquals(0, school.getId());
+        return school;
+    }
+
+    protected Map<String, Subject> insertSubjects(String... subjectNames) {
+        Map<String, Subject> subjects = new HashMap<>();
+        for (String name : subjectNames) {
+            subjects.put(name, insertSubject(name));
+        }
+        return subjects;
+    }
+
+    protected Group insertGroup(School school, String name, int year) {
+        Group group = new Group(name + +year, "11");
+        groupDao.insert(school, group);
+        return group;
+    }
+
+
+    protected List<Group> insertSchoolGroups(School school, int year) {
+        Group groupFrontEnd = insertGroup(school, "FrontEnd", year);
+        Group groupBackEnd = insertGroup(school, "BackEnd", year);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+
+        return groups;
+    }
+
+    protected List<Group> insertSchoolGroupsWithSubjects(School school, int year, Map<String, Subject> subjects) {
+        Group groupFrontEnd = insertFrontEndGroupWithSubjects(school, year, subjects);
+        Group groupBackEnd = insertBackEndGroupWithSubjects(school, year, subjects);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+
+        return groups;
+    }
+
+
+    protected Group insertFrontEndGroupWithSubjects(School school, int year, Map<String, Subject> subjects) {
+        Group groupFrontEnd = new Group("Frontend " + +year, "11");
+        groupFrontEnd.addSubject(subjects.get("Linux"));
+        groupFrontEnd.addSubject(subjects.get("NodeJS"));
+        groupDao.insert(school, groupFrontEnd);
+        groupDao.addSubjectToGroup(groupFrontEnd, subjects.get("Linux"));
+        groupDao.addSubjectToGroup(groupFrontEnd, subjects.get("NodeJS"));
+        return groupFrontEnd;
+    }
+
+    protected Group insertBackEndGroupWithSubjects(School school, int year, Map<String, Subject> subjects) {
+        Group groupBackEnd = new Group("Backend " + year, "12");
+        groupBackEnd.addSubject(subjects.get("Linux"));
+        groupBackEnd.addSubject(subjects.get("MySQL"));
+        groupDao.insert(school, groupBackEnd);
+        groupDao.addSubjectToGroup(groupBackEnd, subjects.get("Linux"));
+        groupDao.addSubjectToGroup(groupBackEnd, subjects.get("MySQL"));
+        return groupBackEnd;
+    }
+
+    protected void insertBackendTrainees(Group groupBackEnd) {
+        Trainee traineeSidorov = new Trainee("Сидор", "Сидоров", 2);
+        Trainee traineeSmirnov = new Trainee("Николай", "Смирнов", 3);
+        traineeDao.insert(groupBackEnd, traineeSidorov);
+        traineeDao.insert(groupBackEnd, traineeSmirnov);
+        groupBackEnd.addTrainee(traineeSidorov);
+        groupBackEnd.addTrainee(traineeSmirnov);
+    }
+
+    protected void insertFrontEndTrainees(Group groupFrontEnd) {
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        Trainee traineePetrov = new Trainee("Петр", "Петров", 4);
+        traineeDao.insert(groupFrontEnd, traineeIvanov);
+        traineeDao.insert(groupFrontEnd, traineePetrov);
+        groupFrontEnd.addTrainee(traineeIvanov);
+        groupFrontEnd.addTrainee(traineePetrov);
+    }
+}
+package net.thumbtack.school.database.mybatis;
+
+import net.thumbtack.school.database.model.Subject;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class TestSubjectOperations extends TestBase {
+
+    @Test
+    public void testInsertSubject() {
+        Subject subject = insertSubject("Linux");
+        Subject subjectFromDB = subjectDao.getById(subject.getId());
+        assertEquals(subject, subjectFromDB);
+    }
+
+    @Test
+    public void testInsertSubjectWithNullName() {
+        assertThrows(RuntimeException.class, () -> {
+            Subject subject = new Subject(null);
+            subjectDao.insert(subject);
+        });
+    }
+
+    @Test
+    public void testUpdateSubject() {
+        Subject subject = insertSubject("Linux");
+        Subject subjectFromDB = subjectDao.getById(subject.getId());
+        assertEquals(subject, subjectFromDB);
+        subject.setName("Windows");
+        subjectDao.update(subject);
+        subjectFromDB = subjectDao.getById(subject.getId());
+        assertEquals(subject, subjectFromDB);
+    }
+
+    @Test
+    public void testUpdateSubjectSetNullName() {
+        assertThrows(RuntimeException.class, () -> {
+            Subject subject = insertSubject("Linux");
+            Subject subjectFromDB = subjectDao.getById(subject.getId());
+            assertEquals(subject, subjectFromDB);
+            subject.setName(null);
+            subjectDao.update(subject);
+        });
+    }
+
+    @Test
+    public void testDeleteSubject() {
+        Subject subject = insertSubject("Linux");
+        Subject subjectFromDB = subjectDao.getById(subject.getId());
+        assertEquals(subject, subjectFromDB);
+        subjectDao.delete(subject);
+        subjectFromDB = subjectDao.getById(subject.getId());
+        assertNull(subjectFromDB);
+    }
+
+    @Test
+    public void testInsertTwoSubjects() {
+        Subject subjectLinux = insertSubject("Linux");
+        Subject subjectMySQL = insertSubject("MySQL");
+        List<Subject> subjects = new ArrayList<>();
+        subjects.add(subjectLinux);
+        subjects.add(subjectMySQL);
+        List<Subject> subjectsFromDB = subjectDao.getAll();
+        assertEquals(subjects, subjectsFromDB);
+    }
+
+}
+package net.thumbtack.school.database.mybatis;
+
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import net.thumbtack.school.database.model.Subject;
+import net.thumbtack.school.database.model.Trainee;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+
+public class TestFullSchoolOperations extends TestBase {
+
+
+    @Test
+    public void testInsertSchoolWithGroupsAndTrainees() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Group groupFrontEnd = insertGroup(school2018, "BackEnd", 2018);
+        Group groupBackEnd = insertGroup(school2018, "FrontEnd", 2018);
+        insertFrontEndTrainees(groupFrontEnd);
+        insertBackendTrainees(groupBackEnd);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        for (Group group : schoolFromDB.getGroups()) {
+            group.getTrainees().sort(Comparator.comparingInt(Trainee::getId));
+        }
+        assertEquals(school2018, schoolFromDB);
+    }
+
+
+    @Test
+    public void testInsertSchoolWithGroupsAndSubjectsAndTrainees() {
+        School school2018 = insertTTSchool("TTSchool", 2018);
+        Map<String, Subject> subjects = insertSubjects("Linux", "MySQL", "NodeJS");
+        Group groupFrontEnd = insertFrontEndGroupWithSubjects(school2018, 2018, subjects);
+        Group groupBackEnd = insertBackEndGroupWithSubjects(school2018, 2018, subjects);
+        insertFrontEndTrainees(groupFrontEnd);
+        insertBackendTrainees(groupBackEnd);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        for (Group group : schoolFromDB.getGroups()) {
+            group.getTrainees().sort(Comparator.comparingInt(Trainee::getId));
+        }
+
+        assertEquals(school2018, schoolFromDB);
+    }
+
+    @Test
+    public void testInsertSchoolWithGroupsAndTraineesTransactional() {
+        Map<String, Subject> subjects = insertSubjects("Linux", "MySQL", "NodeJS");
+        School school2018 = new School("TTSchool", 2018);
+        Group groupFrontEnd = new Group("Frontend 2018", "11");
+        groupFrontEnd.addSubject(subjects.get("Linux"));
+        groupFrontEnd.addSubject(subjects.get("NodeJS"));
+        Group groupBackEnd = new Group("Backend 2018", "12");
+        groupBackEnd.addSubject(subjects.get("Linux"));
+        groupBackEnd.addSubject(subjects.get("MySQL"));
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        Trainee traineePetrov = new Trainee("Петр", "Петров", 4);
+        groupFrontEnd.addTrainee(traineeIvanov);
+        groupFrontEnd.addTrainee(traineePetrov);
+        Trainee traineeSidorov = new Trainee("Сидор", "Сидоров", 2);
+        Trainee traineeSmirnov = new Trainee("Николай", "Смирнов", 3);
+        groupBackEnd.addTrainee(traineeSidorov);
+        groupBackEnd.addTrainee(traineeSmirnov);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school2018.setGroups(groups);
+        schoolDao.insertSchoolTransactional(school2018);
+        School schoolFromDB = schoolDao.getById(school2018.getId());
+        assertEquals(school2018, schoolFromDB);
+    }
+}
+package net.thumbtack.school.database.jdbc;
+
+import net.thumbtack.school.database.model.Group;
+import net.thumbtack.school.database.model.School;
+import net.thumbtack.school.database.model.Subject;
+import net.thumbtack.school.database.model.Trainee;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
+
+public class TestJdbcService {
+
+    private static boolean setUpIsDone = false;
+
+    @BeforeAll
+    public static void setUp() {
+        if (!setUpIsDone) {
+            boolean createConnection = JdbcUtils.createConnection();
+            if (!createConnection) {
+                throw new RuntimeException("Can't create connection, stop");
+            }
+            setUpIsDone = true;
+        }
+    }
+
+    @AfterAll
+    public static void close() {
+        if (setUpIsDone)
+            JdbcUtils.closeConnection();
+    }
+
+    @BeforeEach
+    public void clearDatabase() throws SQLException {
+        JdbcService.deleteSchools();
+        JdbcService.deleteTrainees();
+        JdbcService.deleteSubjects();
+    }
+
+    @Test
+    public void testInsertTrainee() throws SQLException {
+        Trainee trainee = new Trainee("Иван", "Иванов", 5);
+        JdbcService.insertTrainee(trainee);
+        Trainee traineeFromDBByColNames = JdbcService.getTraineeByIdUsingColNames(trainee.getId());
+        assertEquals(trainee, traineeFromDBByColNames);
+        Trainee traineeFromDBByColNumbers = JdbcService.getTraineeByIdUsingColNumbers(trainee.getId());
+        assertEquals(trainee, traineeFromDBByColNumbers);
+    }
+
+    @Test
+    public void testUpdateTrainee() throws SQLException {
+        Trainee trainee = new Trainee("Иван", "Иванов", 5);
+        JdbcService.insertTrainee(trainee);
+        Trainee traineeFromDBByColNames = JdbcService.getTraineeByIdUsingColNames(trainee.getId());
+        assertEquals(trainee, traineeFromDBByColNames);
+        trainee.setFirstName("Петр");
+        trainee.setLastName("Петров");
+        JdbcService.updateTrainee(trainee);
+        traineeFromDBByColNames = JdbcService.getTraineeByIdUsingColNames(trainee.getId());
+        assertEquals(trainee, traineeFromDBByColNames);
+    }
+
+    @Test
+    public void testDeleteTrainee() throws SQLException {
+        Trainee trainee = new Trainee("Иван", "Иванов", 5);
+        JdbcService.insertTrainee(trainee);
+        Trainee traineeFromDBByColNames = JdbcService.getTraineeByIdUsingColNames(trainee.getId());
+        assertEquals(trainee, traineeFromDBByColNames);
+        JdbcService.deleteTrainee(trainee);
+        traineeFromDBByColNames = JdbcService.getTraineeByIdUsingColNames(trainee.getId());
+        assertNull(traineeFromDBByColNames);
+    }
+
+    @Test
+    public void testInsertTrainees() throws SQLException {
+        Trainee traineeIvanov = new Trainee("Иван", "Иванов", 5);
+        JdbcService.insertTrainee(traineeIvanov);
+        Trainee traineePetrov = new Trainee("Петр", "Петров", 4);
+        JdbcService.insertTrainee(traineePetrov);
+        List<Trainee> trainees = new ArrayList<>();
+        trainees.add(traineeIvanov);
+        trainees.add(traineePetrov);
+        List<Trainee> traineesFromDBByColNames = JdbcService.getTraineesUsingColNames();
+        traineesFromDBByColNames.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(trainees, traineesFromDBByColNames);
+        List<Trainee> traineesFromDBByColNumbers = JdbcService.getTraineesUsingColNumbers();
+        traineesFromDBByColNumbers.sort(Comparator.comparingInt(Trainee::getId));
+        assertEquals(trainees, traineesFromDBByColNumbers);
+    }
+
+    @Test
+    public void testInsertSchool() throws SQLException {
+        School school = new School("TTSchool", 2018);
+        JdbcService.insertSchool(school);
+        School schoolFromDBByColNames = JdbcService.getSchoolByIdUsingColNames(school.getId());
+        assertEquals(school, schoolFromDBByColNames);
+        School schoolFromDBByColNumbers = JdbcService.getSchoolByIdUsingColNumbers(school.getId());
+        assertEquals(school, schoolFromDBByColNumbers);
+    }
+
+    @Test
+    public void testInsertSubject() throws SQLException {
+        Subject subject = new Subject("MySQL");
+        JdbcService.insertSubject(subject);
+        Subject subjectFromDBByColNames = JdbcService.getSubjectByIdUsingColNames(subject.getId());
+        assertEquals(subject, subjectFromDBByColNames);
+        Subject subjectFromDBByColNumbers = JdbcService.getSubjectByIdUsingColNumbers(subject.getId());
+        assertEquals(subject, subjectFromDBByColNumbers);
+    }
+
+    @Test
+    public void testInsertSchoolAndGroups() throws SQLException {
+        School school = new School("TTSchool", 2018);
+        JdbcService.insertSchool(school);
+        School schoolFromDBByColNames = JdbcService.getSchoolByIdUsingColNames(school.getId());
+        assertEquals(school, schoolFromDBByColNames);
+        Group groupFrontEnd = new Group("Frontend", "11");
+        Group groupBackEnd = new Group("Backend", "12");
+        JdbcService.insertGroup(school, groupFrontEnd);
+        JdbcService.insertGroup(school, groupBackEnd);
+        List<Group> groups = new ArrayList<>();
+        groups.add(groupFrontEnd);
+        groups.add(groupBackEnd);
+        school.setGroups(groups);
+        School schoolFromDBWithGroups = JdbcService.getSchoolByIdWithGroups(school.getId());
+        assertEquals(school, schoolFromDBWithGroups);
+    }
+
+    @Test
+    public void testInsertTwoSchoolsAndGroups() throws SQLException {
+        School school2018 = new School("TTSchool2018", 2018);
+        JdbcService.insertSchool(school2018);
+        School school2019 = new School("TTSchool2019", 2019);
+        JdbcService.insertSchool(school2019);
+        School school2018FromDBByColNames = JdbcService.getSchoolByIdUsingColNames(school2018.getId());
+        assertEquals(school2018, school2018FromDBByColNames);
+        School school2019FromDBByColNames = JdbcService.getSchoolByIdUsingColNames(school2019.getId());
+        assertEquals(school2019, school2019FromDBByColNames);
+        Group group2018FrontEnd = new Group("Frontend2018", "11");
+        Group group2018BackEnd = new Group("Backend2018", "12");
+        Group group2019FrontEnd = new Group("Frontend2019", "11");
+        Group group2019BackEnd = new Group("Backend2019", "12");
+        JdbcService.insertGroup(school2018, group2018FrontEnd);
+        JdbcService.insertGroup(school2018, group2018BackEnd);
+        JdbcService.insertGroup(school2019, group2019FrontEnd);
+        JdbcService.insertGroup(school2019, group2019BackEnd);
+        List<Group> groups2018 = new ArrayList<>();
+        groups2018.add(group2018FrontEnd);
+        groups2018.add(group2018BackEnd);
+        school2018.setGroups(groups2018);
+        List<Group> groups2019 = new ArrayList<>();
+        groups2019.add(group2019FrontEnd);
+        groups2019.add(group2019BackEnd);
+        school2019.setGroups(groups2019);
+        List<School> schools = new ArrayList<>();
+        schools.add(school2018);
+        schools.add(school2019);
+        List<School> schoolsFromDBWithGroups = JdbcService.getSchoolsWithGroups();
+        assertEquals(schools, schoolsFromDBWithGroups);
+    }
+
+    @Test
+    public void testThrowsSQLException() {
+        Method[] declaredMethods = JdbcService.class.getDeclaredMethods();
+        for (Method method : declaredMethods) {
+            if (!Modifier.isPublic(method.getModifiers()))
+                continue;
+            Class<?>[] exceptionTypes = method.getExceptionTypes();
+            boolean throwSQLException = false;
+            for (Class<?> exception : exceptionTypes) {
+                if (exception == SQLException.class) {
+                    throwSQLException = true;
+                    break;
+                }
+            }
+            if (!throwSQLException) {
+                fail();
+            }
+        }
+    }
+}
